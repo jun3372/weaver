@@ -1,0 +1,7 @@
+[app]
+AppName = "hello"
+Version = "0.1.0"
+
+[chat]
+appname = "chat"
+version = "1.0.1"

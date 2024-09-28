@@ -1,0 +1,7 @@
+app:
+  appname: hello
+  version: 1.0.0
+  
+chat:
+  appname: chat
+  version: 1.0.1
