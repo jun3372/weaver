@@ -35,8 +35,8 @@ func Run[T any](ctx context.Context, app func(context.Context, *T) error) error 
 	}
 
 	err = app(ctx, main.(*T))
-
 	cancel()
+	widg.shutdown()
 	return err
 }
 

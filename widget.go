@@ -31,28 +31,13 @@ func newWidgrt(ctx context.Context, conf *viper.Viper, regs []*codegen.Registrat
 		regsByImpl[reg.Impl] = reg
 	}
 
-	w := widget{
+	return &widget{
 		ctx:        ctx,
 		conf:       conf,
 		regsByName: regsByName,
 		regsByImpl: regsByImpl,
 		components: make(map[string]any),
 	}
-
-	go func() {
-		<-ctx.Done()
-		w.mu.Lock()
-		defer w.mu.Unlock()
-
-		for c, impl := range w.components {
-			if i, ok := impl.(Shutdown); ok {
-				if err := i.Shutdown(ctx); err != nil {
-					fmt.Printf("Component %s failed to shutdown: %v\n", c, err)
-				}
-			}
-		}
-	}()
-	return &w
 }
 
 func (w *widget) getImpl(t reflect.Type) (any, error) {
@@ -162,4 +147,17 @@ func (w *widget) WithRef(impl any, get func(t reflect.Type) (any, error)) error 
 		x.setRef(component)
 	}
 	return nil
+}
+
+func (w *widget) shutdown() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	ctx := context.Background()
+	for c, impl := range w.components {
+		if i, ok := impl.(Shutdown); ok {
+			if err := i.Shutdown(ctx); err != nil {
+				fmt.Printf("Component %s failed to shutdown: %v\n", c, err)
+			}
+		}
+	}
 }

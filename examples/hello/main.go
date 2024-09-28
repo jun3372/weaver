@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/cotton-go/weaver"
 )
@@ -50,6 +51,14 @@ func main() {
 func run() error {
 	return weaver.Run(context.Background(), func(ctx context.Context, app *app) error {
 		slog.Info("hello", "conf", app.Config(), "cgat", app.Get())
+		ctx, cannel := context.WithCancel(ctx)
+		go func() {
+			time.Sleep(time.Second * 5)
+			slog.Info("on cannel")
+			cannel()
+		}()
+
+		<-ctx.Done()
 		return nil
 	})
 }
