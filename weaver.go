@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 
-	"github.com/cotton-go/weaver/internal/reflection"
-	"github.com/cotton-go/weaver/runtime/codegen"
+	"github.com/jun3372/weaver/internal/reflection"
+	"github.com/jun3372/weaver/runtime/codegen"
 )
 
 func Run[T any](ctx context.Context, app func(context.Context, *T) error) error {

@@ -1,4 +1,4 @@
-package main
+package user
 
 import (
 	"reflect"
@@ -8,7 +8,7 @@ import (
 
 func init() {
 	codegen.Register(codegen.Registration{
-		Name: "github.com/jun3372/weaver/examples/hello.app",
-		Impl: reflect.TypeOf(app{}),
+		Name: "github.com/jun3372/weaver/examples/hello/user.User",
+		Impl: reflect.TypeOf(User{}),
 	})
 }
