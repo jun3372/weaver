@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ type widget struct {
 	ctx        context.Context
 	conf       *viper.Viper
 	regsByName map[string]*codegen.Registration       // registrations by component name
+	regsByIntf map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl map[reflect.Type]*codegen.Registration // registrations by component implementation type
 	mu         sync.Mutex                             // guards the following fields
 	components map[string]any                         // components, by name
@@ -25,9 +27,11 @@ type widget struct {
 
 func newWidgrt(ctx context.Context, conf *viper.Viper, regs []*codegen.Registration) *widget {
 	regsByName := map[string]*codegen.Registration{}
+	regsByIntf := map[reflect.Type]*codegen.Registration{}
 	regsByImpl := map[reflect.Type]*codegen.Registration{}
 	for _, reg := range regs {
 		regsByName[reg.Name] = reg
+		regsByIntf[reg.Iface] = reg
 		regsByImpl[reg.Impl] = reg
 	}
 
@@ -35,9 +39,29 @@ func newWidgrt(ctx context.Context, conf *viper.Viper, regs []*codegen.Registrat
 		ctx:        ctx,
 		conf:       conf,
 		regsByName: regsByName,
+		regsByIntf: regsByIntf,
 		regsByImpl: regsByImpl,
 		components: make(map[string]any),
 	}
+}
+
+func (w *widget) GetIntf(t reflect.Type) (any, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.getIntf(t)
+}
+
+func (w *widget) getIntf(t reflect.Type) (any, error) {
+	reg, ok := w.regsByIntf[t]
+	if !ok {
+		return nil, fmt.Errorf("component %v not found; maybe you forgot to run weaver generate", t)
+	}
+
+	c, err := w.get(reg)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func (w *widget) getImpl(t reflect.Type) (any, error) {
@@ -51,6 +75,21 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 	return w.get(reg)
 }
 
+func (w *widget) logger(name string, attrs ...string) *slog.Logger {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+		// AddSource: true,
+	}))
+
+	// slog.Info("logger", "name", name, "attrs", attrs)
+	// for _, attr := range attrs {
+	// 	logger = logger.With(slog.String("attr", attr))
+	// }
+	logger = logger.With(slog.String("component", name))
+
+	return logger
+}
+
 func (w *widget) get(reg *codegen.Registration) (any, error) {
 	if c, ok := w.components[reg.Name]; ok {
 		return c, nil
@@ -59,21 +98,27 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	v := reflect.New(reg.Impl)
 	obj := v.Interface()
 
+	// Set logger.
+	if err := w.setLogger(obj, w.logger(reg.Name, "x", "1", "b", "2")); err != nil {
+		return nil, err
+	}
+
 	// todo:: WithConfig
 	w.WithConfig(v)
 	// todo:: WithRef
 	if err := w.WithRef(obj, func(t reflect.Type) (any, error) {
-		reg, ok := w.regsByImpl[t]
-		if !ok {
-			return nil, errors.Errorf("component implementation %v not found; maybe you forgot to run weaver generate", t)
-		}
+		// reg, ok := w.regsByImpl[t]
+		// if !ok {
+		// 	return nil, errors.Errorf("component implementation %v not found; maybe you forgot to run weaver generate", t)
+		// }
 
-		return w.get(reg)
+		// return w.get(reg)
+		return w.getIntf(t)
 	}); err != nil {
 		return nil, err
 	}
 
-	if i, ok := obj.(Init); ok {
+	if i, ok := obj.(interface{ Init(context.Context) error }); ok {
 		if err := i.Init(w.ctx); err != nil {
 			return nil, fmt.Errorf("component %q initialization failed: %w", reg.Name, err)
 		}
@@ -139,13 +184,21 @@ func (w *widget) WithRef(impl any, get func(t reflect.Type) (any, error)) error 
 			return fmt.Errorf("FillRefs: setting field %v.%s: %w", s.Type(), s.Type().Field(i).Name, err)
 		}
 
-		tf := reflect.TypeOf(component)
-		if tf.Kind() == reflect.Pointer {
-			component = reflect.ValueOf(component).Elem().Interface()
+		if reflect.TypeOf(component).Kind() == reflect.Pointer {
+			// component = reflect.ValueOf(component).Elem().Interface()
 		}
 
 		x.setRef(component)
 	}
+	return nil
+}
+
+func (w *widget) setLogger(v any, logger *slog.Logger) error {
+	x, ok := v.(interface{ setLogger(*slog.Logger) })
+	if !ok {
+		return fmt.Errorf("setLogger: %T does not implement weaver.Implements", v)
+	}
+	x.setLogger(logger)
 	return nil
 }
 
@@ -154,7 +207,7 @@ func (w *widget) shutdown() {
 	defer w.mu.Unlock()
 	ctx := context.Background()
 	for c, impl := range w.components {
-		if i, ok := impl.(Shutdown); ok {
+		if i, ok := impl.(interface{ Shutdown(context.Context) error }); ok {
 			if err := i.Shutdown(ctx); err != nil {
 				fmt.Printf("Component %s failed to shutdown: %v\n", c, err)
 			}

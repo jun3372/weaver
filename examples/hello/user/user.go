@@ -2,26 +2,44 @@ package user
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/jun3372/weaver"
 	"github.com/jun3372/weaver/examples/hello/chat"
 )
 
-type User struct {
+type User interface {
+	SayHello(ctx context.Context, name string) (response, error)
+}
+
+type user struct {
+	weaver.Implements[User]
 	weaver.Ref[chat.Chat]
+	weaver.WithConfig[option] `weaver:"user"`
 }
 
-func (u *User) Init(ctx context.Context) error {
-	slog.Info("user init")
+type option struct {
+	Source string
+	Type   string
+}
+type response struct {
+	Message string
+	Option  option
+}
+
+func (u *user) Init(ctx context.Context) error {
+	u.Logger(ctx).Info("user init")
 	return nil
 }
 
-func (u *User) Shutdown(ctx context.Context) error {
-	slog.Info("user Shutdown")
+func (u *user) Shutdown(ctx context.Context) error {
+	u.Logger(ctx).Warn("user Shutdown")
 	return nil
 }
 
-func (u *User) SayHello(ctx context.Context, name string) (string, error) {
-	return "hello:" + name, nil
+func (u *user) SayHello(ctx context.Context, name string) (response, error) {
+	u.Logger(ctx).Info("user SayHello", "name", name)
+	return response{
+		Message: "Hello " + name,
+		Option:  *u.Config(),
+	}, nil
 }

@@ -1,7 +1,11 @@
 app:
   appname: hello
   version: 1.0.0
-  
+
 chat:
   appname: chat
   version: 1.0.1
+
+user:
+  source: postgresql://admin:admin@localhost:5432/postgresdb?sslmode=disable
+  type: postgresql

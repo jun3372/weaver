@@ -8,7 +8,8 @@ import (
 
 func init() {
 	codegen.Register(codegen.Registration{
-		Name: "github.com/jun3372/weaver/examples/hello/chat.chat",
-		Impl: reflect.TypeOf(Chat{}),
+		Name:  "github.com/jun3372/weaver/examples/hello/chat.chat",
+		Iface: reflect.TypeOf((*Chat)(nil)).Elem(),
+		Impl:  reflect.TypeOf(chat{}),
 	})
 }

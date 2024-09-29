@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"github.com/jun3372/weaver"
+	"github.com/jun3372/weaver/examples/hello/chat"
 	"github.com/jun3372/weaver/examples/hello/user"
 )
 
@@ -15,18 +15,19 @@ type option struct {
 }
 
 type app struct {
+	weaver.Implements[weaver.Main]
 	weaver.WithConfig[option] `weaver:"app"`
-	// weaver.Ref[chat.Chat]
+	chat                      weaver.Ref[chat.Chat]
 	weaver.Ref[user.User]
 }
 
-func (app *app) Init(context.Context) error {
-	slog.Info("app init")
+func (app *app) Init(ctx context.Context) error {
+	app.Logger(ctx).Info("app init")
 	return nil
 }
 
-func (app *app) Shutdown(context.Context) error {
-	slog.Info("app Shutdown")
+func (app *app) Shutdown(ctx context.Context) error {
+	app.Logger(ctx).Info("app Shutdown")
 	return nil
 }
 
@@ -38,13 +39,16 @@ func main() {
 
 func run() error {
 	return weaver.Run(context.Background(), func(ctx context.Context, app *app) error {
-		slog.Info("hello", "conf", app.Config(), "u", app.Get())
+		resp, err := app.Get().SayHello(ctx, "jun3372")
+		if err != nil {
+			return err
+		}
 
-		app.Get().SayHello(ctx, "jun3372")
+		app.Logger(ctx).Info("resp", "msg", resp)
 		ctx, cannel := context.WithCancel(ctx)
 		go func() {
 			time.Sleep(time.Second * 5)
-			slog.Info("on cannel")
+			app.Logger(ctx).Info("on cannel")
 			cannel()
 		}()
 
