@@ -158,12 +158,12 @@ func (w *widget) WithConfig(v reflect.Value) {
 func (w *widget) WithRef(impl any, get func(t reflect.Type) (any, error)) error {
 	p := reflect.ValueOf(impl)
 	if p.Kind() != reflect.Pointer {
-		return fmt.Errorf("FillRefs: %T not a pointer", impl)
+		return fmt.Errorf("WithRefs: %T not a pointer", impl)
 	}
 
 	s := p.Elem()
 	if s.Kind() != reflect.Struct {
-		return fmt.Errorf("FillRefs: %T not a struct pointer", impl)
+		return fmt.Errorf("WithRefs: %T not a struct pointer", impl)
 	}
 
 	for i, n := 0, s.NumField(); i < n; i++ {
@@ -181,7 +181,7 @@ func (w *widget) WithRef(impl any, get func(t reflect.Type) (any, error)) error 
 		valueField := f.Field(0)
 		component, err := get(valueField.Type())
 		if err != nil {
-			return fmt.Errorf("FillRefs: setting field %v.%s: %w", s.Type(), s.Type().Field(i).Name, err)
+			return fmt.Errorf("WithRefs: setting field %v.%s: %w", s.Type(), s.Type().Field(i).Name, err)
 		}
 
 		if reflect.TypeOf(component).Kind() == reflect.Pointer {
