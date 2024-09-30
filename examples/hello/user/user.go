@@ -13,8 +13,8 @@ type User interface {
 
 type user struct {
 	weaver.Implements[User]
-	weaver.Ref[chat.Chat]
 	weaver.WithConfig[option] `weaver:"user"`
+	weaver.Ref[chat.Chat]
 }
 
 type option struct {

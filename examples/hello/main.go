@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/jun3372/weaver"
-	"github.com/jun3372/weaver/examples/hello/chat"
 	"github.com/jun3372/weaver/examples/hello/user"
 )
 
@@ -17,8 +16,8 @@ type option struct {
 type app struct {
 	weaver.Implements[weaver.Main]
 	weaver.WithConfig[option] `weaver:"app"`
-	chat                      weaver.Ref[chat.Chat]
 	weaver.Ref[user.User]
+	u weaver.Ref[user.User]
 }
 
 func (app *app) Init(ctx context.Context) error {
@@ -39,12 +38,23 @@ func main() {
 
 func run() error {
 	return weaver.Run(context.Background(), func(ctx context.Context, app *app) error {
-		resp, err := app.Get().SayHello(ctx, "jun3372")
-		if err != nil {
-			return err
+		{
+			resp, err := app.u.Get().SayHello(ctx, "jun3372")
+			if err != nil {
+				return err
+			}
+
+			app.Logger(ctx).Info("resp", "msg", resp)
+		}
+		{
+			resp, err := app.Get().SayHello(ctx, "jun3372")
+			if err != nil {
+				return err
+			}
+
+			app.Logger(ctx).Info("resp", "msg", resp)
 		}
 
-		app.Logger(ctx).Info("resp", "msg", resp)
 		ctx, cannel := context.WithCancel(ctx)
 		go func() {
 			time.Sleep(time.Second * 5)

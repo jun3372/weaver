@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jun3372/weaver/cmd/generate"
-	"github.com/jun3372/weaver/version"
+	"github.com/jun3372/weaver/cmd/version"
 )
 
 var rootCmd = &cobra.Command{
