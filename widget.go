@@ -202,10 +202,22 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 	return nil
 }
 
-func (w *widget) shutdown() {
+func (w *widget) start(ctx context.Context) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	ctx := context.Background()
+	for _, impl := range w.components {
+		if i, ok := impl.(interface{ Start(context.Context) error }); ok {
+			if err := i.Start(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (w *widget) shutdown(ctx context.Context) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	for c, impl := range w.components {
 		if i, ok := impl.(interface{ Shutdown(context.Context) error }); ok {
 			if err := i.Shutdown(ctx); err != nil {

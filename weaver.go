@@ -2,6 +2,7 @@ package weaver
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -17,9 +18,9 @@ import (
 type Main interface{}
 
 func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Context, *T) error) error {
-	var cancel context.CancelFunc
-	ctx, cancel = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	filename := os.Getenv("SERVICE_CONFIG")
+	var filename string
+	flag.StringVar(&filename, "conf", os.Getenv("SERVICE_CONFIG"), "config file path")
+	flag.Parse()
 	if filename == "" {
 		return errors.New("no config file")
 	}
@@ -30,6 +31,9 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 		return errors.Errorf("Fatal error config file: %v", err)
 	}
 
+	var cancel context.CancelFunc
+	ctx, cancel = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
 	regs := codegen.Registered()
 	widg := newWidgrt(ctx, conf, regs)
 	main, err := widg.getImpl(reflection.Type[T]())
@@ -39,7 +43,7 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 	err = app(ctx, main.(*T))
 	cancel()
-	widg.shutdown()
+	widg.shutdown(context.Background())
 	return err
 }
 
