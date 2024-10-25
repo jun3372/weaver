@@ -9,13 +9,18 @@ import (
 	"github.com/jun3372/weaver/runtime/codegen"
 )
 
+type options struct {
+	Name string
+}
+
 type app struct {
 	weaver.Implements[weaver.Main]
+	weaver.WithConfig[options] `weaver:"app"`
 }
 
 func main() {
 	err := weaver.Run(context.Background(), func(ctx context.Context, t *app) error {
-		t.Logger(ctx).Info("hello world")
+		t.Logger(ctx).Info("hello world", "conf", t.Config())
 		return nil
 	})
 
