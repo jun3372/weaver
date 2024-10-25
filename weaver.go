@@ -23,7 +23,6 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	flag.Parse()
 	conf := viper.New()
 	if filename != "" {
-		conf := viper.New()
 		conf.SetConfigFile(filename)
 		if err := conf.ReadInConfig(); err != nil {
 			return errors.Errorf("Fatal error config file: %v", err)

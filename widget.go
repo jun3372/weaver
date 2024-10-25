@@ -105,7 +105,9 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	}
 
 	// WithConfig
-	w.WithConfig(v)
+	if len(w.conf.AllKeys()) > 0 {
+		w.WithConfig(v)
+	}
 
 	// WithRef
 	if err := w.WithRef(obj, func(t reflect.Type) (any, error) { return w.getIntf(t) }); err != nil {
