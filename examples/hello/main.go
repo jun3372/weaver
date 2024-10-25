@@ -38,6 +38,8 @@ func main() {
 
 func run() error {
 	return weaver.Run(context.Background(), func(ctx context.Context, app *app) error {
+		app.Logger(ctx).Info("app run")
+		return nil
 		{
 			resp, err := app.u.Get().SayHello(ctx, "jun3372")
 			if err != nil {

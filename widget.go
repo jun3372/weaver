@@ -100,7 +100,7 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	obj := v.Interface()
 
 	// Set logger.
-	if err := w.setLogger(obj, w.logger(reg.Name, "x", "1", "b", "2")); err != nil {
+	if err := w.setLogger(obj, w.logger(reg.Name)); err != nil {
 		return nil, err
 	}
 
@@ -201,8 +201,8 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 }
 
 func (w *widget) start(ctx context.Context) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	// w.mu.Lock()
+	// defer w.mu.Unlock()
 	for _, impl := range w.components {
 		if i, ok := impl.(interface{ Start(context.Context) error }); ok {
 			if err := i.Start(ctx); err != nil {

@@ -21,14 +21,13 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	var filename string
 	flag.StringVar(&filename, "conf", os.Getenv("SERVICE_CONFIG"), "config file path")
 	flag.Parse()
-	if filename == "" {
-		return errors.New("no config file")
-	}
-
 	conf := viper.New()
-	conf.SetConfigFile(filename)
-	if err := conf.ReadInConfig(); err != nil {
-		return errors.Errorf("Fatal error config file: %v", err)
+	if filename != "" {
+		conf := viper.New()
+		conf.SetConfigFile(filename)
+		if err := conf.ReadInConfig(); err != nil {
+			return errors.Errorf("Fatal error config file: %v", err)
+		}
 	}
 
 	var cancel context.CancelFunc
