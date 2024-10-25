@@ -12,12 +12,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 
+	"github.com/jun3372/weaver/internal/config"
 	"github.com/jun3372/weaver/runtime/codegen"
 )
 
 type widget struct {
 	ctx        context.Context
 	conf       *viper.Viper
+	config     *config.Config
 	regsByName map[string]*codegen.Registration       // registrations by component name
 	regsByIntf map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl map[reflect.Type]*codegen.Registration // registrations by component implementation type
@@ -35,9 +37,17 @@ func newWidgrt(ctx context.Context, conf *viper.Viper, regs []*codegen.Registrat
 		regsByImpl[reg.Impl] = reg
 	}
 
+	var config *config.Config
+	if len(conf.AllKeys()) > 0 {
+		if err := conf.UnmarshalKey("weaver", &config); err != nil {
+			slog.Warn("failed to unmarshal system config", "err", err)
+		}
+	}
+
 	return &widget{
 		ctx:        ctx,
 		conf:       conf,
+		config:     config,
 		regsByName: regsByName,
 		regsByIntf: regsByIntf,
 		regsByImpl: regsByImpl,
@@ -77,17 +87,32 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 }
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level:     slog.LevelDebug,
-		AddSource: true,
-	}))
+	var level = slog.LevelInfo
+	var AddSource = false
+	if w.config != nil {
+		switch w.config.Logger.Level {
+		case "DEBUG":
+			level = slog.LevelDebug
+		case "INFO":
+			level = slog.LevelInfo
+		case "WARN":
+			level = slog.LevelWarn
+		case "ERROR":
+			level = slog.LevelError
+		}
 
-	// slog.Info("logger", "name", name, "attrs", attrs)
-	// for _, attr := range attrs {
-	// 	logger = logger.With(slog.String("attr", attr))
-	// }
-	logger = logger.With(slog.String("component", name))
+		AddSource = w.config.Logger.AddSource
+	}
 
+	var handler slog.Handler
+	opts := &slog.HandlerOptions{Level: level, AddSource: AddSource}
+	if w.config != nil && strings.ToLower(w.config.Logger.Type) == "json" {
+		handler = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stderr, opts)
+	}
+
+	logger := slog.New(handler).With(slog.String("component", name))
 	return logger
 }
 

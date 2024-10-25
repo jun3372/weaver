@@ -1,6 +1,12 @@
 package config
 
 type Config struct {
-	Filename string
-	Content  string
+	Logger Logger
+}
+
+type Logger struct {
+	Level     string
+	AddSource bool
+	Type      string // json、text
+	File      string
 }
