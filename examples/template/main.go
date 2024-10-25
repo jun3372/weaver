@@ -20,7 +20,7 @@ type app struct {
 
 func main() {
 	err := weaver.Run(context.Background(), func(ctx context.Context, t *app) error {
-		t.Logger(ctx).Info("hello world", "conf", t.Config())
+		t.Logger(ctx).Debug("hello world", "conf", t.Config())
 		return nil
 	})
 

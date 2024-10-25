@@ -1,0 +1,6 @@
+app:
+  Name: "go-web-template"
+
+weaver:
+  Logger:
+    Level: "debug"

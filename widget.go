@@ -3,6 +3,7 @@ package weaver
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"reflect"
@@ -37,7 +38,7 @@ func newWidgrt(ctx context.Context, conf *viper.Viper, regs []*codegen.Registrat
 		regsByImpl[reg.Impl] = reg
 	}
 
-	var config *config.Config
+	var config = new(config.Config)
 	if len(conf.AllKeys()) > 0 {
 		if err := conf.UnmarshalKey("weaver", &config); err != nil {
 			slog.Warn("failed to unmarshal system config", "err", err)
@@ -87,33 +88,36 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 }
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
+	var wr io.Writer
 	var level = slog.LevelInfo
-	var AddSource = false
-	if w.config != nil {
-		switch w.config.Logger.Level {
-		case "DEBUG":
-			level = slog.LevelDebug
-		case "INFO":
-			level = slog.LevelInfo
-		case "WARN":
-			level = slog.LevelWarn
-		case "ERROR":
-			level = slog.LevelError
-		}
+	var source = false
 
-		AddSource = w.config.Logger.AddSource
+	switch strings.ToUpper(w.config.Logger.Level) {
+	case "DEBUG":
+		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "WARN":
+		level = slog.LevelWarn
+	case "ERROR":
+		level = slog.LevelError
+	}
+
+	wr = os.Stderr
+	source = w.config.Logger.AddSource
+	if w.config.Logger.File != "" {
+		// todo:: 打开文件
 	}
 
 	var handler slog.Handler
-	opts := &slog.HandlerOptions{Level: level, AddSource: AddSource}
+	opts := slog.HandlerOptions{Level: level, AddSource: source}
 	if w.config != nil && strings.ToLower(w.config.Logger.Type) == "json" {
-		handler = slog.NewJSONHandler(os.Stderr, opts)
+		handler = slog.NewJSONHandler(wr, &opts)
 	} else {
-		handler = slog.NewTextHandler(os.Stderr, opts)
+		handler = slog.NewTextHandler(wr, &opts)
 	}
 
-	logger := slog.New(handler).With(slog.String("component", name))
-	return logger
+	return slog.New(handler).With(slog.String("component", name))
 }
 
 func (w *widget) get(reg *codegen.Registration) (any, error) {
