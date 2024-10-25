@@ -61,6 +61,7 @@ func (w *widget) getIntf(t reflect.Type) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return c, nil
 }
 
@@ -77,8 +78,8 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-		// AddSource: true,
+		Level:     slog.LevelDebug,
+		AddSource: true,
 	}))
 
 	// slog.Info("logger", "name", name, "attrs", attrs)
@@ -103,18 +104,11 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 		return nil, err
 	}
 
-	// todo:: WithConfig
+	// WithConfig
 	w.WithConfig(v)
-	// todo:: WithRef
-	if err := w.WithRef(obj, func(t reflect.Type) (any, error) {
-		// reg, ok := w.regsByImpl[t]
-		// if !ok {
-		// 	return nil, errors.Errorf("component implementation %v not found; maybe you forgot to run weaver generate", t)
-		// }
 
-		// return w.get(reg)
-		return w.getIntf(t)
-	}); err != nil {
+	// WithRef
+	if err := w.WithRef(obj, func(t reflect.Type) (any, error) { return w.getIntf(t) }); err != nil {
 		return nil, err
 	}
 
@@ -122,6 +116,10 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 		if err := i.Init(w.ctx); err != nil {
 			return nil, fmt.Errorf("component %q initialization failed: %w", reg.Name, err)
 		}
+	}
+
+	if err := w.start(w.ctx); err != nil {
+		return nil, fmt.Errorf("component %q startup failed: %w", reg.Name, err)
 	}
 
 	w.components[reg.Name] = obj
