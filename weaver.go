@@ -39,7 +39,17 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 		return err
 	}
 
-	err = app(ctx, main.(*T))
+	// 启动组件
+	if err = widg.start(widg.ctx); err != nil {
+		return err
+	}
+
+	if m, ok := main.(*T); !ok {
+		return errors.New("main type error")
+	} else {
+		err = app(ctx, m)
+	}
+
 	cancel()
 	widg.shutdown(context.Background())
 	return err

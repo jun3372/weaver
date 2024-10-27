@@ -155,15 +155,6 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 		}
 	}
 
-	_, err, _ := w.single.Do("start."+reg.Name, func() (any, error) {
-		err := w.start(w.ctx)
-		return nil, err
-	})
-
-	if err != nil {
-		return nil, errors.Errorf("component %q startup failed: %v", reg.Name, err)
-	}
-
 	w.components[reg.Name] = obj
 	return obj, nil
 }
