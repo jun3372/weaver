@@ -54,11 +54,6 @@ type Ref[T any] struct{ value T }
 func (r Ref[T]) isRef() {}
 func (r Ref[T]) Get() T { return r.value }
 func (r *Ref[T]) setRef(value any) {
-	// if v, ok := value.(*T); ok {
-	// 	r.value = *v
-	// 	return
-	// }
-
 	r.value = value.(T)
 }
 
@@ -68,7 +63,7 @@ type PointerToMain[T any] interface {
 }
 
 type InstanceOf[T any] interface {
-	implements(T)
+	implements(_ T)
 }
 type Implements[T any] struct {
 	// Component logger.
