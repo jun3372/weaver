@@ -12,7 +12,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
-	"golang.org/x/sync/singleflight"
 
 	"github.com/jun3372/weaver/internal/config"
 	"github.com/jun3372/weaver/runtime/codegen"
@@ -22,8 +21,7 @@ type widget struct {
 	ctx        context.Context
 	conf       *viper.Viper
 	config     *config.Config
-	mu         sync.Mutex // guards the following fields
-	single     singleflight.Group
+	mu         sync.Mutex
 	regsByName map[string]*codegen.Registration       // registrations by component name
 	regsByIntf map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl map[reflect.Type]*codegen.Registration // registrations by component implementation type
@@ -145,12 +143,7 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	}
 
 	if i, ok := obj.(interface{ Init(_ context.Context) error }); ok {
-		_, err, _ := w.single.Do("init."+reg.Name, func() (any, error) {
-			err := i.Init(w.ctx)
-			return nil, err
-		})
-
-		if err != nil {
+		if err := i.Init(w.ctx); err != nil {
 			return nil, errors.Errorf("component %q initialization failed: %v", reg.Name, err)
 		}
 	}
