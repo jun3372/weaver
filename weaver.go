@@ -42,7 +42,7 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 	var cancel context.CancelFunc
 	ctx, cancel = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	widg := newWidgrt(ctx, conf, codegen.Registered())
+	widg := newWidgrt(ctx, cancel, conf, codegen.Registered())
 	main, err := widg.getImpl(reflection.Type[T]())
 	if err != nil {
 		return err
@@ -87,6 +87,7 @@ type InstanceOf[T any] interface {
 type Implements[T any] struct {
 	// Component logger.
 	logger *slog.Logger
+	exec   context.CancelFunc
 
 	// weaverInfo *weaver.WeaverInfo
 
@@ -121,6 +122,14 @@ func (i Implements[T]) Logger(ctx context.Context) *slog.Logger {
 
 func (i *Implements[T]) setLogger(logger *slog.Logger) {
 	i.logger = logger
+}
+
+func (i *Implements[T]) setExec(fn context.CancelFunc) {
+	i.exec = fn
+}
+
+func (i *Implements[T]) Exec() {
+	i.exec()
 }
 
 func (Implements[T]) implements(T) {}

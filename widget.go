@@ -22,16 +22,18 @@ type widget struct {
 	conf       *viper.Viper
 	config     *config.Config
 	mu         sync.Mutex
+	exec       context.CancelFunc
 	regsByName map[string]*codegen.Registration       // registrations by component name
 	regsByIntf map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl map[reflect.Type]*codegen.Registration // registrations by component implementation type
 	components map[string]any                         // components, by name
 }
 
-func newWidgrt(ctx context.Context, conf *viper.Viper, regs []*codegen.Registration) *widget {
+func newWidgrt(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration) *widget {
 	var w = widget{
 		ctx:        ctx,
 		conf:       conf,
+		exec:       cancel,
 		config:     new(config.Config),
 		regsByName: map[string]*codegen.Registration{},
 		regsByIntf: map[reflect.Type]*codegen.Registration{},
@@ -124,6 +126,13 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 
 	v := reflect.New(reg.Impl)
 	obj := v.Interface()
+
+	// 设置中途退出方法
+	if w.exec != nil {
+		if i, ok := obj.(interface{ setExec(context.CancelFunc) }); ok {
+			i.setExec(w.exec)
+		}
+	}
 
 	// Set logger.
 	if err := w.setLogger(obj, w.logger(reg.Name)); err != nil {
