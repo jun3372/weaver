@@ -18,9 +18,20 @@ var (
 
 // PrintVersion 输出版本信息
 func PrintVersion() {
-	fmt.Printf("Version: %s\n", Version)
-	fmt.Printf("Go Version: %s\n", GoVersion)
-	fmt.Printf("Git Commit: %s\n", GitCommit)
-	fmt.Printf("Build Time: %s\n", BuildTime)
+	if Version != "" {
+		fmt.Printf("Version: %s\n", Version)
+	}
+
+	if GoVersion != "" {
+		fmt.Printf("Go Version: %s\n", GoVersion)
+	}
+
+	if GitCommit != "" {
+		fmt.Printf("Git Commit: %s\n", GitCommit)
+	}
+
+	if BuildTime != "" {
+		fmt.Printf("Build Time: %s\n", BuildTime)
+	}
 	os.Exit(0)
 }
