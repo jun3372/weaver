@@ -29,31 +29,29 @@ type widget struct {
 }
 
 func newWidgrt(ctx context.Context, conf *viper.Viper, regs []*codegen.Registration) *widget {
-	regsByName := map[string]*codegen.Registration{}
-	regsByIntf := map[reflect.Type]*codegen.Registration{}
-	regsByImpl := map[reflect.Type]*codegen.Registration{}
-	for _, reg := range regs {
-		regsByName[reg.Name] = reg
-		regsByIntf[reg.Iface] = reg
-		regsByImpl[reg.Impl] = reg
+	var w = widget{
+		ctx:        ctx,
+		conf:       conf,
+		config:     new(config.Config),
+		regsByName: map[string]*codegen.Registration{},
+		regsByIntf: map[reflect.Type]*codegen.Registration{},
+		regsByImpl: map[reflect.Type]*codegen.Registration{},
+		components: make(map[string]any),
 	}
 
-	var config = new(config.Config)
-	if len(conf.AllKeys()) > 0 {
-		if err := conf.UnmarshalKey("weaver", &config); err != nil {
+	for _, reg := range regs {
+		w.regsByName[reg.Name] = reg
+		w.regsByImpl[reg.Impl] = reg
+		w.regsByIntf[reg.Iface] = reg
+	}
+
+	if w.conf != nil {
+		if err := conf.UnmarshalKey("weaver", &w.config); err != nil {
 			slog.Warn("failed to unmarshal system config", "err", err)
 		}
 	}
 
-	return &widget{
-		ctx:        ctx,
-		conf:       conf,
-		config:     config,
-		regsByName: regsByName,
-		regsByIntf: regsByIntf,
-		regsByImpl: regsByImpl,
-		components: make(map[string]any),
-	}
+	return &w
 }
 
 func (w *widget) GetIntf(t reflect.Type) (any, error) {
@@ -133,7 +131,7 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	}
 
 	// WithConfig
-	if len(w.conf.AllKeys()) > 0 {
+	if w.conf != nil {
 		w.WithConfig(v)
 	}
 

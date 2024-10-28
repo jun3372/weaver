@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/pkg/errors"
@@ -13,16 +14,26 @@ import (
 
 	"github.com/jun3372/weaver/internal/reflection"
 	"github.com/jun3372/weaver/runtime/codegen"
+	"github.com/jun3372/weaver/version"
 )
 
 type Main interface{}
 
 func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Context, *T) error) error {
 	var filename string
+	var printVersion bool
 	flag.StringVar(&filename, "conf", os.Getenv("SERVICE_CONFIG"), "config file path")
+	flag.BoolVar(&printVersion, "version", strings.ToLower(os.Getenv("SERVICE_VERSION")) == "true", "print version info")
 	flag.Parse()
-	conf := viper.New()
+
+	if printVersion {
+		version.PrintVersion()
+		return nil
+	}
+
+	var conf *viper.Viper
 	if filename != "" {
+		conf = viper.New()
 		conf.SetConfigFile(filename)
 		if err := conf.ReadInConfig(); err != nil {
 			return errors.Errorf("Fatal error config file: %v", err)
@@ -30,10 +41,8 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	}
 
 	var cancel context.CancelFunc
-	ctx, cancel = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-
-	regs := codegen.Registered()
-	widg := newWidgrt(ctx, conf, regs)
+	ctx, cancel = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	widg := newWidgrt(ctx, conf, codegen.Registered())
 	main, err := widg.getImpl(reflection.Type[T]())
 	if err != nil {
 		return err
