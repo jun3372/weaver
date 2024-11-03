@@ -12,6 +12,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/jun3372/weaver/internal/config"
 	"github.com/jun3372/weaver/runtime/codegen"
@@ -20,9 +21,9 @@ import (
 type widget struct {
 	ctx        context.Context
 	conf       *viper.Viper
-	config     *config.Config
+	option     *config.Config
 	mu         sync.Mutex
-	exec       context.CancelFunc
+	cancel     context.CancelFunc
 	regsByName map[string]*codegen.Registration       // registrations by component name
 	regsByIntf map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl map[reflect.Type]*codegen.Registration // registrations by component implementation type
@@ -33,8 +34,8 @@ func newWidgrt(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 	var w = widget{
 		ctx:        ctx,
 		conf:       conf,
-		exec:       cancel,
-		config:     new(config.Config),
+		cancel:     cancel,
+		option:     new(config.Config),
 		regsByName: map[string]*codegen.Registration{},
 		regsByIntf: map[reflect.Type]*codegen.Registration{},
 		regsByImpl: map[reflect.Type]*codegen.Registration{},
@@ -48,7 +49,7 @@ func newWidgrt(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 	}
 
 	if w.conf != nil {
-		if err := conf.UnmarshalKey("weaver", &w.config); err != nil {
+		if err := conf.UnmarshalKey("weaver", &w.option); err != nil {
 			slog.Warn("failed to unmarshal system config", "err", err)
 		}
 	}
@@ -91,7 +92,7 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	var wr io.Writer
 	var level = slog.LevelInfo
 
-	switch strings.ToUpper(w.config.Logger.Level) {
+	switch strings.ToUpper(w.option.Logger.Level) {
 	case "DEBUG":
 		level = slog.LevelDebug
 	case "INFO":
@@ -103,20 +104,36 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	}
 
 	wr = os.Stderr
-	source := w.config.Logger.AddSource
-	if w.config.Logger.File != "" {
-		// todo:: 打开文件
+	source := w.option.Logger.AddSource
+	if conf := w.option.Logger; conf.File != "" {
+		wr = &lumberjack.Logger{
+			Filename:   conf.File,
+			LocalTime:  conf.LocalTime,
+			MaxSize:    conf.MaxSize,
+			MaxAge:     conf.MaxAge,
+			MaxBackups: conf.MaxBackups,
+			Compress:   conf.Compress,
+		}
 	}
 
 	var handler slog.Handler
 	opts := slog.HandlerOptions{Level: level, AddSource: source}
-	if w.config != nil && strings.ToLower(w.config.Logger.Type) == "json" {
+	if w.option != nil && strings.ToLower(w.option.Logger.Type) == "json" {
 		handler = slog.NewJSONHandler(wr, &opts)
 	} else {
 		handler = slog.NewTextHandler(wr, &opts)
 	}
 
-	return slog.New(handler).With(slog.String("component", name))
+	logger := slog.New(handler)
+	if w.option.Logger.Component {
+		logger = logger.With("component", name)
+	}
+
+	// for _, attr := range attrs {
+	// logger = logger.With(attr)
+	// }
+
+	return logger
 }
 
 func (w *widget) get(reg *codegen.Registration) (any, error) {
@@ -128,9 +145,9 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	obj := v.Interface()
 
 	// 设置中途退出方法
-	if w.exec != nil {
+	if w.cancel != nil {
 		if i, ok := obj.(interface{ setExec(context.CancelFunc) }); ok {
-			i.setExec(w.exec)
+			i.setExec(w.cancel)
 		}
 	}
 
@@ -237,9 +254,21 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 func (w *widget) start(ctx context.Context) error {
 	for _, impl := range w.components {
 		if i, ok := impl.(interface{ Start(_ context.Context) error }); ok {
-			if err := i.Start(ctx); err != nil {
-				return err
-			}
+			go func(ctx context.Context, fn func(_ context.Context) error) {
+				var err error
+				defer func() {
+					if e := recover(); e != nil {
+						w.logger("start").Error("component failed to start", "err", err, "e", e)
+					}
+
+					w.cancel()
+				}()
+
+				if err = i.Start(ctx); err != nil {
+					w.logger("start").Error("component failed to start", "err", err)
+					return
+				}
+			}(ctx, i.Start)
 		}
 	}
 	return nil
