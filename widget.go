@@ -18,6 +18,9 @@ import (
 	"github.com/jun3372/weaver/runtime/codegen"
 )
 
+var once *sync.Once
+var logger *slog.Logger
+
 type widget struct {
 	ctx        context.Context
 	conf       *viper.Viper
@@ -89,45 +92,50 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 }
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
-	var wr io.Writer
-	var level = slog.LevelInfo
+	once.Do(func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
 
-	switch strings.ToUpper(w.option.Logger.Level) {
-	case "DEBUG":
-		level = slog.LevelDebug
-	case "INFO":
-		level = slog.LevelInfo
-	case "WARN":
-		level = slog.LevelWarn
-	case "ERROR":
-		level = slog.LevelError
-	}
+		var wr io.Writer
+		var level = slog.LevelInfo
 
-	wr = os.Stderr
-	source := w.option.Logger.AddSource
-	if conf := w.option.Logger; conf.File != "" {
-		wr = &lumberjack.Logger{
-			Filename:   conf.File,
-			LocalTime:  conf.LocalTime,
-			MaxSize:    conf.MaxSize,
-			MaxAge:     conf.MaxAge,
-			MaxBackups: conf.MaxBackups,
-			Compress:   conf.Compress,
+		switch strings.ToUpper(w.option.Logger.Level) {
+		case "DEBUG":
+			level = slog.LevelDebug
+		case "INFO":
+			level = slog.LevelInfo
+		case "WARN":
+			level = slog.LevelWarn
+		case "ERROR":
+			level = slog.LevelError
 		}
-	}
 
-	var handler slog.Handler
-	opts := slog.HandlerOptions{Level: level, AddSource: source}
-	if w.option != nil && strings.ToLower(w.option.Logger.Type) == "json" {
-		handler = slog.NewJSONHandler(wr, &opts)
-	} else {
-		handler = slog.NewTextHandler(wr, &opts)
-	}
+		wr = os.Stderr
+		source := w.option.Logger.AddSource
+		if conf := w.option.Logger; conf.File != "" {
+			wr = &lumberjack.Logger{
+				Filename:   conf.File,
+				LocalTime:  conf.LocalTime,
+				MaxSize:    conf.MaxSize,
+				MaxAge:     conf.MaxAge,
+				MaxBackups: conf.MaxBackups,
+				Compress:   conf.Compress,
+			}
+		}
 
-	logger := slog.New(handler)
-	if w.option.Logger.Component {
-		logger = logger.With("component", name)
-	}
+		var handler slog.Handler
+		opts := slog.HandlerOptions{Level: level, AddSource: source}
+		if w.option != nil && strings.ToLower(w.option.Logger.Type) == "json" {
+			handler = slog.NewJSONHandler(wr, &opts)
+		} else {
+			handler = slog.NewTextHandler(wr, &opts)
+		}
+
+		logger := slog.New(handler)
+		if w.option.Logger.Component {
+			logger = logger.With("component", name)
+		}
+	})
 
 	// for _, attr := range attrs {
 	// logger = logger.With(attr)
@@ -254,21 +262,21 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 func (w *widget) start(ctx context.Context) error {
 	for _, impl := range w.components {
 		if i, ok := impl.(interface{ Start(_ context.Context) error }); ok {
-			go func(ctx context.Context, fn func(_ context.Context) error) {
+			go func(ctx context.Context, fn func(_ context.Context) error, logger *slog.Logger) {
 				var err error
 				defer func() {
 					if e := recover(); e != nil {
-						w.logger("start").Error("component failed to start", "err", err, "e", e)
+						logger.Error("Component startup encountered an exception", "err", err, "e", e)
 					}
 
 					w.cancel()
 				}()
 
 				if err = i.Start(ctx); err != nil {
-					w.logger("start").Error("component failed to start", "err", err)
+					logger.Error("Component startup failed", "err", err)
 					return
 				}
-			}(ctx, i.Start)
+			}(ctx, i.Start, w.logger("start"))
 		}
 	}
 	return nil
