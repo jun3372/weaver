@@ -604,11 +604,6 @@ func extractComponent(opt Options, pkg *packages.Package, file *ast.File, tset *
 			formatType(pkg, impl))
 	}
 
-	// Validate the component's methods.
-	// if err := validateMethods(pkg, tset, intf); err != nil {
-	// 	return nil, err
-	// }
-
 	// Check that listener names are unique.
 	seenLis := map[string]struct{}{}
 	for _, lis := range listeners {
@@ -617,15 +612,6 @@ func extractComponent(opt Options, pkg *packages.Package, file *ast.File, tset *
 				"component implementation %s declares multiple listeners with name %s. Please disambiguate.", formatType(pkg, impl), lis)
 		}
 		seenLis[lis] = struct{}{}
-	}
-
-	// Warn the user if the component has a mistyped Init or Shutdown method. These
-	// methods are supposed to have type "func(context.Context) error", but it's easy
-	// to forget to add a context.Context argument or error return. Without
-	// this warning, the component's Init or Shutdown method will be silently ignored.
-	// This can be very frustrating to debug.
-	if err := checkMistypedInitOrShutdown(pkg, tset, impl); err != nil {
-		opt.Warn(err)
 	}
 
 	comp := &component{
@@ -738,101 +724,6 @@ func (c *component) methods() []*types.Func {
 		return methods[i].Name() < methods[j].Name()
 	})
 	return methods
-}
-
-// validateMethods validates that the provided component's methods are all
-// valid component methods.
-func validateMethods(pkg *packages.Package, tset *typeSet, intf *types.Named) error {
-	var errs []error
-	underlying := intf.Underlying().(*types.Interface)
-	for i := 0; i < underlying.NumMethods(); i++ {
-		m := underlying.Method(i)
-		t, ok := m.Type().(*types.Signature)
-		if !ok {
-			panic(errorf(pkg.Fset, m.Pos(), "method %s doesn't have a signature", m.Name()))
-		}
-
-		// Disallow unexported methods.
-		if !m.Exported() {
-			errs = append(errs, errorf(pkg.Fset, m.Pos(),
-				"Method `%s%s %s` of Service Weaver component %q is unexported. Every method in a component interface must be exported.",
-				m.Name(), formatType(pkg, t.Params()), formatType(pkg, t.Results()), intf.Obj().Name()))
-			continue
-		}
-
-		// bad is a helper function for producing helpful error messages.
-		bad := func(bad, format string, arg ...any) error {
-			err := fmt.Errorf(format, arg...)
-			return errorf(
-				pkg.Fset, m.Pos(),
-				"Method `%s%s %s` of Service Weaver component %q has incorrect %s types. %w",
-				m.Name(), formatType(pkg, t.Params()), formatType(pkg, t.Results()), intf.Obj().Name(), bad, err)
-		}
-
-		// First argument must be context.Context.
-		if t.Params().Len() < 1 || !isContext(t.Params().At(0).Type()) {
-			errs = append(errs, bad("argument", "The first argument must have type context.Context."))
-		}
-
-		// All arguments but context.Context must be serializable.
-		for i := 1; i < t.Params().Len(); i++ {
-			arg := t.Params().At(i)
-			if err := errors.Join(tset.checkSerializable(arg.Type())...); err != nil {
-				// TODO(mwhittaker): Print a link to documentation on which types are serializable.
-				errs = append(errs, bad("argument",
-					"Argument %d has type %s, which is not serializable. All arguments, besides the initial context.Context, must be serializable.\n%w",
-					i, formatType(pkg, arg.Type()), err))
-			}
-		}
-
-		// Last result must be error.
-		if t.Results().Len() < 1 || t.Results().At(t.Results().Len()-1).Type().String() != "error" {
-			// TODO(mwhittaker): If the function doesn't return anything, don't
-			// print t.Results.
-			errs = append(errs, bad("return", "The last return must have type error."))
-		}
-
-		// All results but error must be serializable.
-		for i := 0; i < t.Results().Len()-1; i++ {
-			res := t.Results().At(i)
-			if err := errors.Join(tset.checkSerializable(res.Type())...); err != nil {
-				// TODO(mwhittaker): Print a link to documentation on which types are serializable.
-				errs = append(errs, bad("return",
-					"Return %d has type %v, which is not serializable. All returns, besides the final error, must be serializable.\n%w",
-					i, formatType(pkg, res.Type()), err))
-			}
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// checkMistypedInitOrShutdown returns an error if the provided component implementation
-// has an Init or a Shutdown method that does not have type "func(context.Context) error".
-func checkMistypedInitOrShutdown(pkg *packages.Package, tset *typeSet, impl *types.Named) error {
-	for i := 0; i < impl.NumMethods(); i++ {
-		m := impl.Method(i)
-		if m.Name() != "Init" && m.Name() != "Shutdown" {
-			continue
-		}
-
-		// TODO(mwhittaker): Highlight the warning yellow instead of red.
-		sig := m.Type().(*types.Signature)
-		err := errorf(pkg.Fset, m.Pos(),
-			`WARNING: Component %v's %s method has type "%v", not type "func(context.Context) error". It will be ignored. See https://serviceweaver.dev/docs.html#components-implementation for more information.`,
-			impl.Obj().Name(), m.Name(), sig)
-
-		// Check parameters.
-		if sig.Params().Len() != 1 || !isContext(sig.Params().At(0).Type()) {
-			return err
-		}
-
-		// Check returns.
-		if sig.Results().Len() != 1 || sig.Results().At(0).Type().String() != "error" {
-			return err
-		}
-		return nil
-	}
-	return nil
 }
 
 // routerMethods returns the routing key and the set of routed methods for comp.
