@@ -25,7 +25,7 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-const weaverPackagePath = "github.com/ServiceWeaver/weaver"
+const weaverPackagePath = "github.com/jun3372/weaver"
 
 // typeSet holds type information needed by the code generator.
 type typeSet struct {

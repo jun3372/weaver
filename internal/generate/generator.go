@@ -194,24 +194,24 @@ func newGenerator(opt Options, pkg *packages.Package, fset *token.FileSet, autom
 	// Search every file in the package for types that embed the
 	// weaver.AutoMarshal struct.
 	tset := newTypeSet(pkg, automarshals, &typeutil.Map{})
-	for _, file := range pkg.Syntax {
-		filename := fset.Position(file.Package).Filename
-		if filepath.Base(filename) == generatedCodeFile {
-			// Ignore weaver_gen.go files.
-			continue
-		}
-		// ts, err := findAutoMarshals(pkg, file)
-		// if err != nil {
-		// 	errs = append(errs, err)
-		// 	continue
-		// }
-		// for _, t := range ts {
-		// 	tset.automarshalCandidates.Set(t, struct{}{})
-		// }
-	}
-	if err := errors.Join(errs...); err != nil {
-		return nil, err
-	}
+	// for _, file := range pkg.Syntax {
+	// 	filename := fset.Position(file.Package).Filename
+	// 	if filepath.Base(filename) == generatedCodeFile {
+	// 		// Ignore weaver_gen.go files.
+	// 		continue
+	// 	}
+	// 	ts, err := findAutoMarshals(pkg, file)
+	// 	if err != nil {
+	// 		errs = append(errs, err)
+	// 		continue
+	// 	}
+	// 	for _, t := range ts {
+	// 		tset.automarshalCandidates.Set(t, struct{}{})
+	// 	}
+	// }
+	// if err := errors.Join(errs...); err != nil {
+	// 	return nil, err
+	// }
 
 	// Just because a type embeds weaver.AutoMarshal doesn't mean we can
 	// automatically marshal it. Some types, like `struct { x chan int }`, are
@@ -283,6 +283,12 @@ func newGenerator(opt Options, pkg *packages.Package, fset *token.FileSet, autom
 		fileset:    fset,
 		components: maps.Values(components),
 	}, nil
+}
+
+func hasWeaverImplements(typeSpec *ast.TypeSpec) bool {
+	// 检查类型定义节点的注释
+
+	return false
 }
 
 // findComponents returns the components in the provided file. For example,
@@ -433,7 +439,7 @@ func findAutoMarshals(pkg *packages.Package, f *ast.File) ([]*types.Named, error
 			automarshal := false
 			for i := 0; i < t.NumFields(); i++ {
 				f := t.Field(i)
-				if f.Embedded() && isWeaverAutoMarshal(f.Type()) {
+				if f.Embedded() && isWeaverImplements(f.Type()) {
 					automarshal = true
 					break
 				}
@@ -928,22 +934,22 @@ func (g *generator) generate() error {
 			fmt.Fprintln(&body, fmt.Sprintf(format, args...))
 		}
 		g.generateRegisteredComponents(fn)
-		g.generateInstanceChecks(fn)
-		g.generateRouterChecks(fn)
-		g.generateLocalStubs(fn)
-		g.generateClientStubs(fn)
-		if err := g.generateVersionCheck(fn); err != nil {
-			return err
-		}
-		g.generateServerStubs(fn)
-		g.generateReflectStubs(fn)
-		g.generateAutoMarshalMethods(fn)
-		g.generateRouterMethods(fn)
-		g.generateEncDecMethods(fn)
+		// g.generateInstanceChecks(fn)
+		// g.generateRouterChecks(fn)
+		// g.generateLocalStubs(fn)
+		// g.generateClientStubs(fn)
+		// if err := g.generateVersionCheck(fn); err != nil {
+		// 	return err
+		// }
+		// g.generateServerStubs(fn)
+		// g.generateReflectStubs(fn)
+		// g.generateAutoMarshalMethods(fn)
+		// g.generateRouterMethods(fn)
+		// g.generateEncDecMethods(fn)
 
 		// append the size methods
 		if g.sizeFuncNeeded.Len() > 0 {
-			fn(`// Size implementations.`)
+			// fn(`// Size implementations.`)
 			fn(``)
 			keys := g.sizeFuncNeeded.Keys()
 			sort.Slice(keys, func(i, j int) bool {
@@ -1080,12 +1086,12 @@ func (g *generator) generateInstanceChecks(p printFn) {
 	// `weaver generate`, these checks will fail to build. Similarly, if a user
 	// changes the interface in a weaver.Implements and forgets to re-run
 	// `weaver generate`, these checks will fail to build.
-	p(``)
-	p(`// weaver.InstanceOf checks.`)
-	for _, c := range g.components {
-		// e.g., var _ weaver.InstanceOf[Odd] = &odd{}
-		p(`var _ %s[%s] = (*%s)(nil)`, g.weaver().qualify("InstanceOf"), g.tset.genTypeString(c.intf), g.tset.genTypeString(c.impl))
-	}
+	// p(``)
+	// p(`// weaver.InstanceOf checks.`)
+	// for _, c := range g.components {
+	// 	// e.g., var _ weaver.InstanceOf[Odd] = &odd{}
+	// 	p(`var _ %s[%s] = (*%s)(nil)`, g.weaver().qualify("InstanceOf"), g.tset.genTypeString(c.intf), g.tset.genTypeString(c.impl))
+	// }
 }
 
 // generateRouterChecks generates code that checks that every component
@@ -1179,11 +1185,11 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		return
 	}
 
-	g.tset.importPackage("context", "context")
+	// g.tset.importPackage("context", "context")
 	p(``)
 	p(`func init() {`)
 	for _, comp := range g.components {
-		name := comp.intfName()
+		// name := comp.intfName()
 		var b strings.Builder
 
 		// Emits initializer for a single method's MethodMetrics object.
@@ -1206,7 +1212,7 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		for _, m := range comp.methods() {
 			emitMetricInitializer(m, false)
 		}
-		localStubFn := fmt.Sprintf(`func(impl any, caller string, tracer %v) any { return %s_local_stub{impl: impl.(%s), tracer: tracer%s } }`, g.trace().qualify("Tracer"), notExported(name), g.componentRef(comp), b.String())
+		// localStubFn := fmt.Sprintf(`func(impl any, caller string, tracer %v) any { return %s_local_stub{impl: impl.(%s), tracer: tracer%s } }`, g.trace().qualify("Tracer"), notExported(name), g.componentRef(comp), b.String())
 
 		// E.g.,
 		//   func(stub *codegen.Stub, caller string) any {
@@ -1216,25 +1222,25 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		for _, m := range comp.methods() {
 			emitMetricInitializer(m, true)
 		}
-		clientStubFn := fmt.Sprintf(`func(stub %s, caller string) any { return %s_client_stub{stub: stub%s } }`,
-			g.codegen().qualify("Stub"), notExported(name), b.String())
+		// clientStubFn := fmt.Sprintf(`func(stub %s, caller string) any { return %s_client_stub{stub: stub%s } }`,
+		// g.codegen().qualify("Stub"), notExported(name), b.String())
 
 		// E.g.,
 		//   func(impl any, addLoad func(uint64, float64)) codegen.Server {
 		//       return foo_server_stub{impl: impl.(Foo), addLoad: addLoad}
 		//   }
-		serverStubFn := fmt.Sprintf(`func(impl any, addLoad func(uint64, float64)) %s { return %s_server_stub{impl: impl.(%s), addLoad: addLoad } }`, g.codegen().qualify("Server"), notExported(name), g.componentRef(comp))
+		// serverStubFn := fmt.Sprintf(`func(impl any, addLoad func(uint64, float64)) %s { return %s_server_stub{impl: impl.(%s), addLoad: addLoad } }`, g.codegen().qualify("Server"), notExported(name), g.componentRef(comp))
 
 		// E.g.,
 		//   func(caller func(string, context.Context, []any) ([]any, error)) any {
 		//       return foo_reflect_stub{caller: caller}
 		//   }
 		reflect := g.tset.importPackage("reflect", "reflect")
-		context := g.tset.importPackage("context", "context")
-		reflectStubFn := fmt.Sprintf(
-			`func(caller func(string, %s, []any, []any) error) any { return %s_reflect_stub{caller: caller} }`,
-			context.qualify("Context"), notExported(name),
-		)
+		// context := g.tset.importPackage("context", "context")
+		// reflectStubFn := fmt.Sprintf(
+		// 	`func(caller func(string, %s, []any, []any) error) any { return %s_reflect_stub{caller: caller} }`,
+		// 	context.qualify("Context"), notExported(name),
+		// )
 
 		var refData strings.Builder
 		myName := comp.fullIntfName()
@@ -1257,24 +1263,24 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		//   https://pkg.go.dev/reflect#example-TypeOf
 		p(`		Iface: %s((*%s)(nil)).Elem(),`, reflect.qualify("TypeOf"), g.componentRef(comp))
 		p(`		Impl: %s(%s{}),`, reflect.qualify("TypeOf"), comp.implName())
-		if comp.router != nil {
-			p(`		Routed: true,`)
-		}
-		if len(comp.listeners) > 0 {
-			listeners := make([]string, len(comp.listeners))
-			for i, lis := range comp.listeners {
-				listeners[i] = fmt.Sprintf("%q", lis)
-			}
-			p(`		Listeners: []string{%s},`, strings.Join(listeners, ", "))
-		}
-		if len(comp.noretry) > 0 {
-			p(`		NoRetry: []int{%s},`, noRetryString(comp))
-		}
-		p(`		LocalStubFn: %s,`, localStubFn)
-		p(`		ClientStubFn: %s,`, clientStubFn)
-		p(`		ServerStubFn: %s,`, serverStubFn)
-		p(`		ReflectStubFn: %s,`, reflectStubFn)
-		p(`		RefData: %s,`, strconv.Quote(refData.String()))
+		// if comp.router != nil {
+		// p(`		Routed: true,`)
+		// }
+		// if len(comp.listeners) > 0 {
+		// 	listeners := make([]string, len(comp.listeners))
+		// 	for i, lis := range comp.listeners {
+		// 		listeners[i] = fmt.Sprintf("%q", lis)
+		// 	}
+		// 	p(`		Listeners: []string{%s},`, strings.Join(listeners, ", "))
+		// }
+		// if len(comp.noretry) > 0 {
+		// 	p(`		NoRetry: []int{%s},`, noRetryString(comp))
+		// }
+		// p(`		LocalStubFn: %s,`, localStubFn)
+		// p(`		ClientStubFn: %s,`, clientStubFn)
+		// p(`		ServerStubFn: %s,`, serverStubFn)
+		// p(`		ReflectStubFn: %s,`, reflectStubFn)
+		// p(`		RefData: %s,`, strconv.Quote(refData.String()))
 		p(`	})`)
 	}
 	p(`}`)
