@@ -93,9 +93,6 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	once.Do(func() {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-
 		var wr io.Writer
 		var level = slog.LevelInfo
 
@@ -110,7 +107,7 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 			level = slog.LevelError
 		}
 
-		wr = os.Stderr
+		wr = os.Stdout
 		source := w.option.Logger.AddSource
 		if conf := w.option.Logger; conf.File != "" {
 			wr = &lumberjack.Logger{
@@ -131,7 +128,7 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 			handler = slog.NewTextHandler(wr, &opts)
 		}
 
-		logger := slog.New(handler)
+		logger = slog.New(handler)
 		if w.option.Logger.Component {
 			logger = logger.With("component", name)
 		}
