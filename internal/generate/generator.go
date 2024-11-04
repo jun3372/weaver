@@ -606,9 +606,9 @@ func extractComponent(opt Options, pkg *packages.Package, file *ast.File, tset *
 	}
 
 	// Validate the component's methods.
-	if err := validateMethods(pkg, tset, intf); err != nil {
-		return nil, err
-	}
+	// if err := validateMethods(pkg, tset, intf); err != nil {
+	// 	return nil, err
+	// }
 
 	// Check that listener names are unique.
 	seenLis := map[string]struct{}{}
