@@ -93,9 +93,7 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	once.Do(func() {
-		var wr io.Writer
 		var level = slog.LevelInfo
-
 		switch strings.ToUpper(w.option.Logger.Level) {
 		case "DEBUG":
 			level = slog.LevelDebug
@@ -107,25 +105,25 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 			level = slog.LevelError
 		}
 
-		wr = os.Stdout
-		source := w.option.Logger.AddSource
+		var writer io.Writer
+		writer = os.Stdout
 		if conf := w.option.Logger; conf.File != "" {
-			wr = &lumberjack.Logger{
+			writer = io.MultiWriter(os.Stdout, &lumberjack.Logger{
 				Filename:   conf.File,
 				LocalTime:  conf.LocalTime,
 				MaxSize:    conf.MaxSize,
 				MaxAge:     conf.MaxAge,
 				MaxBackups: conf.MaxBackups,
 				Compress:   conf.Compress,
-			}
+			})
 		}
 
 		var handler slog.Handler
-		opts := slog.HandlerOptions{Level: level, AddSource: source}
+		opts := slog.HandlerOptions{Level: level, AddSource: w.option.Logger.AddSource}
 		if w.option != nil && strings.ToLower(w.option.Logger.Type) == "json" {
-			handler = slog.NewJSONHandler(wr, &opts)
+			handler = slog.NewJSONHandler(writer, &opts)
 		} else {
-			handler = slog.NewTextHandler(wr, &opts)
+			handler = slog.NewTextHandler(writer, &opts)
 		}
 
 		logger = slog.New(handler)
