@@ -12,7 +12,7 @@
             "program": "${workspaceRoot}/cmd/weaver",
             "args": [
                 "generate",
-                "./examples/demo/..."
+                "./examples/hello/..."
             ],
             "cwd": "${workspaceRoot}"
         }
