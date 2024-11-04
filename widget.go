@@ -18,7 +18,7 @@ import (
 	"github.com/jun3372/weaver/runtime/codegen"
 )
 
-var once *sync.Once
+var once sync.Once
 var logger *slog.Logger
 
 type widget struct {
