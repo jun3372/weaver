@@ -262,14 +262,14 @@ func (w *widget) start(ctx context.Context) error {
 				defer func() {
 					if e := recover(); e != nil {
 						logger.Error("Component startup encountered an exception", "err", err, "e", e)
+						w.cancel()
+						return
 					}
-
-					w.cancel()
 				}()
 
 				if err = i.Start(ctx); err != nil {
 					logger.Error("Component startup failed", "err", err)
-					return
+					w.cancel()
 				}
 			}(ctx, i.Start, w.logger("start"))
 		}
