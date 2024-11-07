@@ -1,6 +1,10 @@
 package wechat
 
-import "github.com/jun3372/weaver"
+import (
+	"context"
+
+	"github.com/jun3372/weaver"
+)
 
 type option struct{}
 
@@ -14,4 +18,10 @@ type impl struct {
 
 func (i *impl) Get() option {
 	return option{}
+}
+
+func (i *impl) Start(ctx context.Context) error {
+	i.Logger(ctx).Info("wechat start")
+	<-ctx.Done()
+	return nil
 }

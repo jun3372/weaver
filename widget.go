@@ -255,8 +255,10 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 }
 
 func (w *widget) start(ctx context.Context) error {
+	var wg sync.WaitGroup
 	for _, impl := range w.components {
 		if i, ok := impl.(interface{ Start(_ context.Context) error }); ok {
+			wg.Add(1)
 			go func(ctx context.Context, fn func(_ context.Context) error, logger *slog.Logger) {
 				var err error
 				defer func() {
@@ -267,6 +269,7 @@ func (w *widget) start(ctx context.Context) error {
 					}
 				}()
 
+				wg.Done()
 				if err = i.Start(ctx); err != nil {
 					logger.Error("Component startup failed", "err", err)
 					w.cancel()
@@ -274,6 +277,8 @@ func (w *widget) start(ctx context.Context) error {
 			}(ctx, i.Start, w.logger("start"))
 		}
 	}
+
+	wg.Wait()
 	return nil
 }
 
