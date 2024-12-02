@@ -4,3 +4,9 @@ Name = "go-web-template"
 [weaver]
 [weaver.Logger]
 Level = "debug"
+
+[weaver.Logger.File]
+Filename = "./logs/weaver.log"
+MaxSize = 100
+MaxAge = 7
+MaxBackups = 3

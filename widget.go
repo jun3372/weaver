@@ -105,11 +105,10 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 			level = slog.LevelError
 		}
 
-		var writer io.Writer
-		writer = os.Stdout
-		if conf := w.option.Logger; conf.File != "" {
-			writer = io.MultiWriter(os.Stdout, &lumberjack.Logger{
-				Filename:   conf.File,
+		writers := []io.Writer{os.Stdout}
+		if conf := w.option.Logger.File; conf != nil {
+			writers = append(writers, &lumberjack.Logger{
+				Filename:   conf.Filename,
 				LocalTime:  conf.LocalTime,
 				MaxSize:    conf.MaxSize,
 				MaxAge:     conf.MaxAge,
@@ -119,6 +118,7 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 		}
 
 		var handler slog.Handler
+		var writer = io.MultiWriter(writers...)
 		opts := slog.HandlerOptions{Level: level, AddSource: w.option.Logger.AddSource}
 		if w.option != nil && strings.ToLower(w.option.Logger.Type) == "json" {
 			handler = slog.NewJSONHandler(writer, &opts)
@@ -133,7 +133,7 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	})
 
 	// for _, attr := range attrs {
-	// logger = logger.With(attr)
+	// 		logger = logger.With(attr)
 	// }
 
 	return logger

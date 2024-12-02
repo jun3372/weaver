@@ -1,6 +1,9 @@
 app:
-  Name: "go-web-template"
+  Name: go-web-template
 
 weaver:
   Logger:
     Level: "debug"
+    File:
+      Filename: "./logs/weaver.log"
+      MaxSize: 10
