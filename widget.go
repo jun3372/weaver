@@ -191,7 +191,7 @@ func (w *widget) WithConfig(v reflect.Value) {
 		}
 
 		var key string
-		for _, v := range []string{"weaver", "config", "conf", "yaml", "yml", "toml", "json"} {
+		for _, v := range config.Tags() {
 			value, ok := f.Tag.Lookup(v)
 			if ok || value != "" {
 				key = value
