@@ -299,6 +299,10 @@ func (w *widget) start(ctx context.Context) error {
 					if e := recover(); e != nil {
 						logger.Error("Component startup encountered an exception", "err", err, "e", e)
 						w.cancel()
+						if err == nil {
+							err = e.(error)
+						}
+
 						return
 					}
 				}()
