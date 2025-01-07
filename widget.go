@@ -19,8 +19,10 @@ import (
 	"github.com/jun3372/weaver/runtime/codegen"
 )
 
-var once sync.Once
-var logger *slog.Logger
+var (
+	once   sync.Once
+	logger *slog.Logger
+)
 
 type widget struct {
 	ctx        context.Context
@@ -35,7 +37,7 @@ type widget struct {
 }
 
 func newWidgrt(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration) *widget {
-	var w = widget{
+	w := widget{
 		ctx:        ctx,
 		conf:       conf,
 		cancel:     cancel,
@@ -94,7 +96,7 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	once.Do(func() {
-		var level = slog.LevelInfo
+		level := slog.LevelInfo
 		switch strings.ToUpper(w.option.Logger.Level) {
 		case "DEBUG":
 			level = slog.LevelDebug
@@ -119,7 +121,7 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 		}
 
 		var handler slog.Handler
-		var writer = io.MultiWriter(writers...)
+		writer := io.MultiWriter(writers...)
 		opts := slog.HandlerOptions{Level: level, AddSource: w.option.Logger.AddSource}
 		if w.option != nil && strings.ToLower(w.option.Logger.Type) == "json" {
 			handler = slog.NewJSONHandler(writer, &opts)

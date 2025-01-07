@@ -6,13 +6,13 @@ import (
 )
 
 var (
-	//Version 项目版本信息
+	// Version 项目版本信息
 	Version = ""
-	//GoVersion Go版本信息
+	// GoVersion Go版本信息
 	GoVersion = ""
-	//GitCommit git提交commmit id
+	// GitCommit git提交commmit id
 	GitCommit = ""
-	//BuildTime 构建时间
+	// BuildTime 构建时间
 	BuildTime = ""
 )
 

@@ -569,7 +569,7 @@ func (tset *typeSet) genTypeString(t types.Type) string {
 	// more information on qualifiers and pretty printing types.
 	//
 	// [1]: https://github.com/golang/example/tree/master/gotypes#formatting-support
-	var qualifier = func(pkg *types.Package) string {
+	qualifier := func(pkg *types.Package) string {
 		if pkg == tset.pkg.Types {
 			return ""
 		}
