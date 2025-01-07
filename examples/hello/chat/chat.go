@@ -15,11 +15,17 @@ type option struct {
 
 type chat struct {
 	weaver.Implements[Chat]
-	weaver.WithConfig[option] `weaver:"chat"`
+	weaver.WithConfig[option] `conf:"chat"`
 }
 
 func (app *chat) Init(ctx context.Context) error {
-	app.Logger(ctx).Debug("Chat init")
+	app.Logger(ctx).Info("Chat init")
+	return nil
+}
+
+func (app *chat) Start(ctx context.Context) error {
+	app.Logger(ctx).Info("Chat Start")
+	<-ctx.Done()
 	return nil
 }
 

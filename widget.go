@@ -13,6 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	"golang.org/x/sync/errgroup"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/jun3372/weaver/internal/config"
@@ -288,11 +289,11 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 }
 
 func (w *widget) start(ctx context.Context) error {
-	var wg sync.WaitGroup
+	var wg *errgroup.Group
+	wg, ctx = errgroup.WithContext(ctx)
 	for _, impl := range w.components {
 		if i, ok := impl.(interface{ Start(_ context.Context) error }); ok {
-			wg.Add(1)
-			go func(ctx context.Context, fn func(_ context.Context) error, logger *slog.Logger) {
+			go wg.Go(func() error {
 				var err error
 				defer func() {
 					if e := recover(); e != nil {
@@ -302,17 +303,17 @@ func (w *widget) start(ctx context.Context) error {
 					}
 				}()
 
-				wg.Done()
 				if err = i.Start(ctx); err != nil {
 					logger.Error("Component startup failed", "err", err)
 					w.cancel()
 				}
-			}(ctx, i.Start, w.logger("start"))
+
+				return err
+			})
 		}
 	}
 
-	wg.Wait()
-	return nil
+	return wg.Wait()
 }
 
 func (w *widget) shutdown(ctx context.Context) {

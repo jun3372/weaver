@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/jun3372/weaver"
-	"github.com/jun3372/weaver/examples/hello/chat"
 )
 
 type User interface {
@@ -13,8 +12,8 @@ type User interface {
 
 type user struct {
 	weaver.Implements[User]
-	weaver.WithConfig[option] `weaver:"user"`
-	weaver.Ref[chat.Chat]
+	weaver.WithConfig[option] `conf:"user"`
+	// weaver.Ref[chat.Chat]
 }
 
 type option struct {
@@ -27,7 +26,13 @@ type response struct {
 }
 
 func (u *user) Init(ctx context.Context) error {
-	u.Logger(ctx).Info("user init")
+	u.Logger(ctx).Info("User init")
+	return nil
+}
+
+func (u *user) Start(ctx context.Context) error {
+	u.Logger(ctx).Info("User Start")
+	<-ctx.Done()
 	return nil
 }
 
