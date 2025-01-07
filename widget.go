@@ -190,20 +190,16 @@ func (w *widget) WithConfig(v reflect.Value) {
 			continue
 		}
 
-		key, ok := f.Tag.Lookup("weaver")
-		if !ok {
-			key, ok = f.Tag.Lookup("yaml")
-			if !ok {
-				key, ok = f.Tag.Lookup("yml")
-			}
-
-			key, ok = f.Tag.Lookup("toml")
-			if !ok {
-				key, ok = f.Tag.Lookup("json")
+		var key string
+		for _, v := range []string{"weaver", "config", "conf", "yaml", "yml", "toml", "json"} {
+			value, ok := f.Tag.Lookup(v)
+			if ok || value != "" {
+				key = value
+				break
 			}
 		}
 
-		if !ok || key == "" {
+		if key == "" {
 			w.logger("weaver").Info("未找到配置依赖标签", "struct", t, "fieldName", f.Name, "fieldType", f.Type, "tag", f.Tag)
 			continue
 		}

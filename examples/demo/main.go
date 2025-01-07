@@ -10,14 +10,14 @@ import (
 )
 
 type options struct {
-	Name string `yaml:"name" json:"name"`
+	Name string
 }
 
 type app struct {
 	weaver.Implements[weaver.Main]
 	weaver.Ref[wechat.T]
-	weaver.WithConfig[options]
-	opt weaver.WithConfig[options] `toml:"app"`
+	weaver.WithConfig[options] `conf:"app"`
+	opt                        weaver.WithConfig[options] `yaml:"app"`
 }
 
 func main() {
