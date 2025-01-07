@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"unsafe"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
@@ -127,13 +128,10 @@ func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 		}
 
 		logger = slog.New(handler)
-		if w.option.Logger.Component {
-			logger = logger.With("component", name)
-		}
 	})
 
 	// for _, attr := range attrs {
-	// 		logger = logger.With(attr)
+	// 	logger = logger.With(attrs)
 	// }
 
 	return logger
@@ -192,17 +190,54 @@ func (w *widget) WithConfig(v reflect.Value) {
 			continue
 		}
 
-		key := f.Tag.Get("weaver")
+		key, ok := f.Tag.Lookup("weaver")
+		if !ok {
+			key, ok = f.Tag.Lookup("yaml")
+			if !ok {
+				key, ok = f.Tag.Lookup("yml")
+			}
+
+			key, ok = f.Tag.Lookup("toml")
+			if !ok {
+				key, ok = f.Tag.Lookup("json")
+			}
+		}
+
+		if !ok || key == "" {
+			w.logger("weaver").Info("未找到配置依赖标签", "struct", t, "fieldName", f.Name, "fieldType", f.Type, "tag", f.Tag)
+			continue
+		}
+
 		if f.Anonymous {
 			config := s.Field(i).Addr().MethodByName("Config")
 			cfg := config.Call(nil)[0].Interface()
 			if err := w.conf.UnmarshalKey(key, cfg); err != nil {
-				slog.Warn("解析配置信息出错", slog.String("key", key), slog.Any("cfg", cfg), slog.Any("err", err))
+				w.logger("weaver").Warn("解析配置信息出错", slog.String("key", key), slog.Any("cfg", cfg), slog.Any("err", err))
 			}
 			continue
 		}
 
-		// todo:: f.Anonymous == false 使用 w.conf.UnmarshalKey 方法给这个f设置值
+		// f.Anonymous == false 使用 w.conf.UnmarshalKey 方法给这个f设置值
+		field := s.FieldByIndex(f.Index)
+		if !field.CanAddr() {
+			continue
+		}
+
+		fieldValue := reflect.New(field.Type()).Elem()
+		configField := fieldValue.Addr().MethodByName("Config")
+		if !configField.IsValid() {
+			w.logger("weaver").Warn("未找到 Config 字段", slog.String("key", key), slog.Any("field", field))
+			continue
+		}
+
+		cfg := configField.Call(nil)[0].Interface()
+		if err := w.conf.UnmarshalKey(key, cfg); err != nil {
+			w.logger("weaver").Warn("解析配置信息出错", slog.String("key", key), slog.Any("configField", cfg), slog.Any("err", err))
+			continue
+		}
+
+		// 使用反射设置未导出字段的值
+		reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(fieldValue)
 	}
 }
 
