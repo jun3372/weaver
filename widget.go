@@ -3,9 +3,7 @@ package weaver
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -14,10 +12,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
-	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/jun3372/weaver/internal/config"
 	"github.com/jun3372/weaver/runtime/codegen"
+	newlogger "github.com/jun3372/weaver/runtime/logger"
 )
 
 var (
@@ -97,45 +95,18 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	once.Do(func() {
-		level := slog.LevelInfo
-		switch strings.ToUpper(w.option.Logger.Level) {
-		case "DEBUG":
-			level = slog.LevelDebug
-		case "INFO":
-			level = slog.LevelInfo
-		case "WARN":
-			level = slog.LevelWarn
-		case "ERROR":
-			level = slog.LevelError
-		}
-
-		writers := []io.Writer{os.Stdout}
-		if conf := w.option.Logger.File; conf != nil {
-			writers = append(writers, &lumberjack.Logger{
-				Filename:   conf.Filename,
-				LocalTime:  conf.LocalTime,
-				MaxSize:    conf.MaxSize,
-				MaxAge:     conf.MaxAge,
-				MaxBackups: conf.MaxBackups,
-				Compress:   conf.Compress,
-			})
-		}
-
-		var handler slog.Handler
-		writer := io.MultiWriter(writers...)
-		opts := slog.HandlerOptions{Level: level, AddSource: w.option.Logger.AddSource}
-		if w.option != nil && strings.ToLower(w.option.Logger.Type) == "json" {
-			handler = slog.NewJSONHandler(writer, &opts)
-		} else {
-			handler = slog.NewTextHandler(writer, &opts)
-		}
-
-		logger = slog.New(handler)
+		logger = newlogger.New(
+			newlogger.WithType(w.option.Logger.Type),
+			newlogger.WithLevelString(w.option.Logger.Level),
+			newlogger.WithAddSource(w.option.Logger.AddSource),
+			newlogger.WithCompress(w.option.Logger.File.Compress),
+			newlogger.WithFilename(w.option.Logger.File.Filename),
+			newlogger.WithMaxAge(w.option.Logger.File.MaxAge),
+			newlogger.WithMaxBackups(w.option.Logger.File.MaxBackups),
+			newlogger.WithMaxSize(w.option.Logger.File.MaxSize),
+			newlogger.WithLocalTime(w.option.Logger.File.LocalTime),
+		).Logger(context.Background())
 	})
-
-	// for _, attr := range attrs {
-	// 	logger = logger.With(attrs)
-	// }
 
 	return logger
 }

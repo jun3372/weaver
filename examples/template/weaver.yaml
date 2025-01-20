@@ -4,6 +4,7 @@ app:
 weaver:
   Logger:
     Level: "debug"
+    Type: "json"
     File:
       Filename: "./logs/weaver.log"
       MaxSize: 10

@@ -4,6 +4,7 @@ Name = "go-web-template"
 [weaver]
 [weaver.Logger]
 Level = "debug"
+Type = "json"
 
 [weaver.Logger.File]
 Filename = "./logs/weaver.log"
