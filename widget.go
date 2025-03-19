@@ -15,42 +15,42 @@ import (
 
 	"github.com/jun3372/weaver/internal/config"
 	"github.com/jun3372/weaver/runtime/codegen"
-	newlogger "github.com/jun3372/weaver/runtime/logger"
+	"github.com/jun3372/weaver/runtime/logger"
 )
 
 var (
-	once   sync.Once
-	logger *slog.Logger
+	once sync.Once
+	log  *slog.Logger
 )
 
 type widget struct {
-	ctx        context.Context
-	conf       *viper.Viper
-	option     *config.Config
-	mu         sync.Mutex
-	cancel     context.CancelFunc
-	regsByName map[string]*codegen.Registration       // registrations by component name
-	regsByIntf map[reflect.Type]*codegen.Registration // registrations by component interface type
-	regsByImpl map[reflect.Type]*codegen.Registration // registrations by component implementation type
-	components map[string]any                         // components, by name
+	ctx             context.Context
+	conf            *viper.Viper
+	option          *config.Config
+	mu              sync.Mutex
+	cancel          context.CancelFunc
+	regsByName      map[string]*codegen.Registration       // registrations by component name
+	regsByInterface map[reflect.Type]*codegen.Registration // registrations by component interface type
+	regsByImpl      map[reflect.Type]*codegen.Registration // registrations by component implementation type
+	components      map[string]any                         // components, by name
 }
 
-func newWidgrt(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration) *widget {
+func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration) *widget {
 	w := widget{
-		ctx:        ctx,
-		conf:       conf,
-		cancel:     cancel,
-		option:     new(config.Config),
-		regsByName: map[string]*codegen.Registration{},
-		regsByIntf: map[reflect.Type]*codegen.Registration{},
-		regsByImpl: map[reflect.Type]*codegen.Registration{},
-		components: make(map[string]any),
+		ctx:             ctx,
+		conf:            conf,
+		cancel:          cancel,
+		option:          new(config.Config),
+		regsByName:      map[string]*codegen.Registration{},
+		regsByInterface: map[reflect.Type]*codegen.Registration{},
+		regsByImpl:      map[reflect.Type]*codegen.Registration{},
+		components:      make(map[string]any),
 	}
 
 	for _, reg := range regs {
 		w.regsByName[reg.Name] = reg
 		w.regsByImpl[reg.Impl] = reg
-		w.regsByIntf[reg.Iface] = reg
+		w.regsByInterface[reg.Interface] = reg
 	}
 
 	if w.conf != nil {
@@ -62,14 +62,14 @@ func newWidgrt(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 	return &w
 }
 
-func (w *widget) GetIntf(t reflect.Type) (any, error) {
+func (w *widget) GetInterface(t reflect.Type) (any, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.getIntf(t)
+	return w.getInterface(t)
 }
 
-func (w *widget) getIntf(t reflect.Type) (any, error) {
-	reg, ok := w.regsByIntf[t]
+func (w *widget) getInterface(t reflect.Type) (any, error) {
+	reg, ok := w.regsByInterface[t]
 	if !ok {
 		return nil, errors.Errorf("component %v not found; maybe you forgot to run weaver generate", t)
 	}
@@ -95,20 +95,20 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	once.Do(func() {
-		logger = newlogger.New(
-			newlogger.WithType(w.option.Logger.Type),
-			newlogger.WithLevelString(w.option.Logger.Level),
-			newlogger.WithAddSource(w.option.Logger.AddSource),
-			newlogger.WithCompress(w.option.Logger.File.Compress),
-			newlogger.WithFilename(w.option.Logger.File.Filename),
-			newlogger.WithMaxAge(w.option.Logger.File.MaxAge),
-			newlogger.WithMaxBackups(w.option.Logger.File.MaxBackups),
-			newlogger.WithMaxSize(w.option.Logger.File.MaxSize),
-			newlogger.WithLocalTime(w.option.Logger.File.LocalTime),
+		log = logger.New(
+			logger.WithType(w.option.Logger.Type),
+			logger.WithLevelString(w.option.Logger.Level),
+			logger.WithAddSource(w.option.Logger.AddSource),
+			logger.WithCompress(w.option.Logger.File.Compress),
+			logger.WithFilename(w.option.Logger.File.Filename),
+			logger.WithMaxAge(w.option.Logger.File.MaxAge),
+			logger.WithMaxBackups(w.option.Logger.File.MaxBackups),
+			logger.WithMaxSize(w.option.Logger.File.MaxSize),
+			logger.WithLocalTime(w.option.Logger.File.LocalTime),
 		).Logger(context.Background())
 	})
 
-	return logger
+	return log
 }
 
 func (w *widget) get(reg *codegen.Registration) (any, error) {
@@ -137,7 +137,7 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	}
 
 	// WithRef
-	if err := w.WithRef(obj, func(t reflect.Type) (any, error) { return w.getIntf(t) }); err != nil {
+	if err := w.WithRef(obj, func(t reflect.Type) (any, error) { return w.getInterface(t) }); err != nil {
 		return nil, err
 	}
 
@@ -268,7 +268,7 @@ func (w *widget) start(ctx context.Context) error {
 				var err error
 				defer func() {
 					if e := recover(); e != nil {
-						logger.Error("Component startup encountered an exception", "err", err, "e", e)
+						log.Error("Component startup encountered an exception", "err", err, "e", e)
 						w.cancel()
 						if err == nil {
 							err = e.(error)
@@ -279,7 +279,7 @@ func (w *widget) start(ctx context.Context) error {
 				}()
 
 				if err = i.Start(ctx); err != nil {
-					logger.Error("Component startup failed", "err", err)
+					log.Error("Component startup failed", "err", err)
 					w.cancel()
 				}
 

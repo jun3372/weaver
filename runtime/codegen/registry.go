@@ -39,7 +39,7 @@ type registry struct {
 // Registration is the configuration needed to register a Service Weaver component.
 type Registration struct {
 	Name      string       // full package-prefixed component name
-	Iface     reflect.Type // interface type for the component
+	Interface reflect.Type // interface type for the component
 	Impl      reflect.Type // implementation type (struct)
 	Routed    bool         // True if calls to this component should be routed
 	Listeners []string     // the names of any weaver.Listeners
@@ -61,16 +61,16 @@ func (r *registry) register(reg Registration) error {
 	}
 
 	ptr := &reg
-	r.components[reg.Iface] = ptr
+	r.components[reg.Interface] = ptr
 	r.byName[reg.Name] = ptr
 	return nil
 }
 
 func verifyRegistration(reg Registration) error {
-	if reg.Iface == nil {
+	if reg.Interface == nil {
 		return errors.New("missing component type")
 	}
-	if reg.Iface.Kind() != reflect.Interface {
+	if reg.Interface.Kind() != reflect.Interface {
 		return errors.New("component type is not an interface")
 	}
 	if reg.Impl == nil {

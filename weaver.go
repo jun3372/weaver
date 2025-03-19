@@ -11,9 +11,11 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/jun3372/weaver/internal/reflection"
 	"github.com/jun3372/weaver/runtime/codegen"
+	"github.com/jun3372/weaver/runtime/logger"
 	"github.com/jun3372/weaver/version"
 )
 
@@ -42,14 +44,14 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 	var cancel context.CancelFunc
 	ctx, cancel = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	widg := newWidgrt(ctx, cancel, conf, codegen.Registered())
-	main, err := widg.getImpl(reflection.Type[T]())
+	widget := newWidget(ctx, cancel, conf, codegen.Registered())
+	main, err := widget.getImpl(reflection.Type[T]())
 	if err != nil {
 		return err
 	}
 
 	// 启动组件
-	if err = widg.start(widg.ctx); err != nil {
+	if err = widget.start(widget.ctx); err != nil {
 		return err
 	}
 
@@ -60,7 +62,7 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	}
 
 	cancel()
-	widg.shutdown(context.Background())
+	widget.shutdown(context.Background())
 	return err
 }
 
@@ -109,15 +111,15 @@ type Implements[T any] struct {
 type implementsImpl struct{}
 
 func (i Implements[T]) Logger(ctx context.Context) *slog.Logger {
-	logger := i.logger
-	// s := trace.SpanContextFromContext(ctx)
-	// if s.HasTraceID() {
-	// 	logger = logger.With("traceid", s.TraceID().String())
-	// }
-	// if s.HasSpanID() {
-	// 	logger = logger.With("spanid", s.SpanID().String())
-	// }
-	return logger
+	l := i.logger
+	s := trace.SpanContextFromContext(ctx)
+	if s.HasTraceID() {
+		l = l.With(logger.TRACE_ID_KEY, s.TraceID().String())
+	}
+	if s.HasSpanID() {
+		l = l.With(logger.SPAN_ID_KEY, s.SpanID().String())
+	}
+	return l
 }
 
 func (i *Implements[T]) setLogger(logger *slog.Logger) {

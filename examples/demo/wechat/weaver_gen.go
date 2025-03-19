@@ -11,7 +11,7 @@ import (
 func init() {
 	codegen.Register(codegen.Registration{
 		Name:  "github.com/jun3372/weaver/examples/demo/wechat/T",
-		Iface: reflect.TypeOf((*T)(nil)).Elem(),
+		Interface: reflect.TypeOf((*T)(nil)).Elem(),
 		Impl:  reflect.TypeOf(impl{}),
 	})
 }

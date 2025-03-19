@@ -36,8 +36,8 @@ func main() {
 
 func init() {
 	codegen.Register(codegen.Registration{
-		Name:  "github.com/jun3372/weaver/examples/hello.app",
-		Iface: reflect.TypeOf((*weaver.Main)(nil)).Elem(),
-		Impl:  reflect.TypeOf(app{}),
+		Name:      "github.com/jun3372/weaver/examples/hello.app",
+		Interface: reflect.TypeOf((*weaver.Main)(nil)).Elem(),
+		Impl:      reflect.TypeOf(app{}),
 	})
 }

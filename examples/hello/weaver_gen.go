@@ -12,7 +12,7 @@ import (
 func init() {
 	codegen.Register(codegen.Registration{
 		Name:  "github.com/jun3372/weaver/Main",
-		Iface: reflect.TypeOf((*weaver.Main)(nil)).Elem(),
+		Interface: reflect.TypeOf((*weaver.Main)(nil)).Elem(),
 		Impl:  reflect.TypeOf(app{}),
 	})
 }
