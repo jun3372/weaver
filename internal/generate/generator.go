@@ -824,10 +824,10 @@ func (g *generator) generate() error {
 			fmt.Fprintln(&body, fmt.Sprintf(format, args...))
 		}
 		g.generateRegisteredComponents(fn)
-
+		g.generateReflectStubs(fn)
 		// append the size methods
 		if g.sizeFuncNeeded.Len() > 0 {
-			// fn(`// Size implementations.`)
+			fn(`// Size implementations.`)
 			fn(``)
 			keys := g.sizeFuncNeeded.Keys()
 			sort.Slice(keys, func(i, j int) bool {
@@ -1000,7 +1000,7 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		// To get a reflect.Type for an interface, we have to first get a type
 		// of its pointer and then resolve the underlying type. See:
 		//   https://pkg.go.dev/reflect#example-TypeOf
-		p(`		Iface: %s((*%s)(nil)).Elem(),`, reflect.qualify("TypeOf"), g.componentRef(comp))
+		p(`		Interface: %s((*%s)(nil)).Elem(),`, reflect.qualify("TypeOf"), g.componentRef(comp))
 		p(`		Impl: %s(%s{}),`, reflect.qualify("TypeOf"), comp.implName())
 		// if comp.router != nil {
 		// p(`		Routed: true,`)
@@ -1484,41 +1484,41 @@ func (g *generator) generateServerStubs(p printFn) {
 func (g *generator) generateReflectStubs(p printFn) {
 	p(``)
 	p(``)
-	p(`// Reflect stub implementations.`)
+	// p(`// Reflect stub implementations.`)
 
 	ts := g.tset.genTypeString
 	for _, comp := range g.components {
-		stub := notExported(comp.intfName()) + "_reflect_stub"
-		context := g.tset.importPackage("context", "context")
-		p(``)
-		p(`type %s struct{`, stub)
-		p(`	caller func(string, %s, []any, []any) error`, context.qualify("Context"))
-		p(`}`)
+		// stub := notExported(comp.intfName()) + "_reflect_stub"
+		// context := g.tset.importPackage("context", "context")
+		// p(``)
+		// p(`type %s struct{`, stub)
+		// p(`	caller func(string, %s, []any, []any) error`, context.qualify("Context"))
+		// p(`}`)
 
 		p(``)
-		p(`// Check that %s implements the %s interface.`, stub, ts(comp.intf))
-		p(`var _ %s = (*%s)(nil)`, ts(comp.intf), stub)
+		p(`// Check that %s implements the %s interface.`, ts(comp.impl), ts(comp.intf))
+		p(`var _ %s = (*%s)(nil)`, ts(comp.intf), ts(comp.impl))
 		p(``)
 
-		for _, m := range comp.methods() {
-			mt := m.Type().(*types.Signature)
+		// for _, m := range comp.methods() {
+		// 	mt := m.Type().(*types.Signature)
 
-			args := make([]string, mt.Params().Len()-1)
-			for i := 1; i < mt.Params().Len(); i++ {
-				args[i-1] = fmt.Sprintf("a%d", i-1)
-			}
+		// 	args := make([]string, mt.Params().Len()-1)
+		// 	for i := 1; i < mt.Params().Len(); i++ {
+		// 		args[i-1] = fmt.Sprintf("a%d", i-1)
+		// 	}
 
-			results := make([]string, mt.Results().Len()-1)
-			for i := 0; i < mt.Results().Len()-1; i++ {
-				results[i] = fmt.Sprintf("&r%d", i)
-			}
+		// 	results := make([]string, mt.Results().Len()-1)
+		// 	for i := 0; i < mt.Results().Len()-1; i++ {
+		// 		results[i] = fmt.Sprintf("&r%d", i)
+		// 	}
 
-			p(``)
-			p(`func (s %s) %s(%s) (%s) {`, stub, m.Name(), g.args(mt), g.returns(mt))
-			p(`	err = s.caller(%q, ctx, []any{%s}, []any{%s})`, m.Name(), strings.Join(args, ","), strings.Join(results, ","))
-			p(`	return`)
-			p(`}`)
-		}
+		// 	p(``)
+		// 	p(`func (s %s) %s(%s) (%s) {`, stub, m.Name(), g.args(mt), g.returns(mt))
+		// 	p(`	err = s.caller(%q, ctx, []any{%s}, []any{%s})`, m.Name(), strings.Join(args, ","), strings.Join(results, ","))
+		// 	p(`	return`)
+		// 	p(`}`)
+		// }
 	}
 }
 

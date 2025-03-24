@@ -9,6 +9,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -33,6 +34,7 @@ type widget struct {
 	regsByInterface map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl      map[reflect.Type]*codegen.Registration // registrations by component implementation type
 	components      map[string]any                         // components, by name
+	watchConfig     []func()
 }
 
 func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration) *widget {
@@ -45,6 +47,7 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 		regsByInterface: map[reflect.Type]*codegen.Registration{},
 		regsByImpl:      map[reflect.Type]*codegen.Registration{},
 		components:      make(map[string]any),
+		watchConfig:     []func(){},
 	}
 
 	for _, reg := range regs {
@@ -57,6 +60,16 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 		if err := conf.UnmarshalKey("weaver", &w.option); err != nil {
 			slog.Warn("failed to unmarshal system config", "err", err)
 		}
+
+		conf.WatchConfig()
+		conf.OnConfigChange(func(e fsnotify.Event) {
+			for _, fn := range w.watchConfig {
+				fn()
+			}
+
+			w.shutdown(context.Background())
+			w.start(context.Background())
+		})
 	}
 
 	return &w
@@ -95,17 +108,24 @@ func (w *widget) getImpl(t reflect.Type) (any, error) {
 
 func (w *widget) logger(name string, attrs ...string) *slog.Logger {
 	once.Do(func() {
-		log = logger.New(
+		opts := []logger.Option{
 			logger.WithType(w.option.Logger.Type),
 			logger.WithLevelString(w.option.Logger.Level),
 			logger.WithAddSource(w.option.Logger.AddSource),
-			logger.WithCompress(w.option.Logger.File.Compress),
-			logger.WithFilename(w.option.Logger.File.Filename),
-			logger.WithMaxAge(w.option.Logger.File.MaxAge),
-			logger.WithMaxBackups(w.option.Logger.File.MaxBackups),
-			logger.WithMaxSize(w.option.Logger.File.MaxSize),
-			logger.WithLocalTime(w.option.Logger.File.LocalTime),
-		).Logger(context.Background())
+		}
+
+		if w.option.Logger.File != nil {
+			opts = append(opts, []logger.Option{
+				logger.WithCompress(w.option.Logger.File.Compress),
+				logger.WithFilename(w.option.Logger.File.Filename),
+				logger.WithMaxAge(w.option.Logger.File.MaxAge),
+				logger.WithMaxBackups(w.option.Logger.File.MaxBackups),
+				logger.WithMaxSize(w.option.Logger.File.MaxSize),
+				logger.WithLocalTime(w.option.Logger.File.LocalTime),
+			}...)
+		}
+
+		log = logger.New(opts...).Logger(context.Background())
 	})
 
 	return log
@@ -166,9 +186,7 @@ func (w *widget) WithConfig(v reflect.Value) {
 
 		var key string
 		for _, v := range config.Tags() {
-			value, ok := f.Tag.Lookup(v)
-			if ok || value != "" {
-				key = value
+			if key = f.Tag.Get(v); key != "" {
 				break
 			}
 		}
@@ -179,11 +197,17 @@ func (w *widget) WithConfig(v reflect.Value) {
 		}
 
 		if f.Anonymous {
-			config := s.Field(i).Addr().MethodByName("Config")
-			cfg := config.Call(nil)[0].Interface()
-			if err := w.conf.UnmarshalKey(key, cfg); err != nil {
-				w.logger("weaver").Warn("解析配置信息出错", slog.String("key", key), slog.Any("cfg", cfg), slog.Any("err", err))
+			configGetter := s.Field(i).Addr().MethodByName("Config").Call(nil)[0]
+			if err := w.conf.UnmarshalKey(key, configGetter.Interface()); err != nil {
+				w.logger("weaver").Error("解析配置失败", "key", key, "err", err)
+				continue
 			}
+
+			w.WatchConfig(key, func() {
+				if err := w.conf.UnmarshalKey(key, configGetter.Interface()); err != nil {
+					w.logger("weaver").Error("解析配置失败", "key", key, "err", err)
+				}
+			})
 			continue
 		}
 
@@ -208,6 +232,17 @@ func (w *widget) WithConfig(v reflect.Value) {
 
 		// 使用反射设置未导出字段的值
 		reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(fieldValue)
+
+		// 监听配置变化
+		w.WatchConfig(key, func() {
+			if err := w.conf.UnmarshalKey(key, cfg); err != nil {
+				w.logger("weaver").Warn("解析配置信息出错", slog.String("key", key), slog.Any("configField", cfg), slog.Any("err", err))
+				return
+			}
+
+			// 使用反射设置未导出字段的值
+			reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(fieldValue)
+		})
 	}
 }
 
@@ -247,6 +282,17 @@ func (w *widget) WithRef(impl any, get func(t reflect.Type) (any, error)) error 
 		x.setRef(component)
 	}
 	return nil
+}
+
+func (w *widget) WatchConfig(key string, fn func()) {
+	// 初始化切片
+	if w.watchConfig == nil {
+		// w.mu.Lock()
+		// defer w.mu.Unlock()
+		w.watchConfig = make([]func(), 0)
+	}
+
+	w.watchConfig = append(w.watchConfig, fn)
 }
 
 func (w *widget) setLogger(v any, logger *slog.Logger) error {

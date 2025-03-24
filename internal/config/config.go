@@ -25,5 +25,6 @@ type LoggerFile struct {
 // 这个函数没有输入参数。
 // 返回值是一个字符串切片，包含了如"weaver"、"config"等标签，用于标识支持的配置文件类型。
 func Tags() []string {
-	return []string{"weaver", "config", "conf", "yaml", "yml", "toml", "json"}
+	return []string{"weaver", "config", "conf"}
+	// return []string{"weaver", "config", "conf", "yaml", "yml", "toml", "json"}
 }

@@ -68,7 +68,7 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 type WithConfig[T any] struct{ config T }
 
-func (wc *WithConfig[T]) Config() *T { return &wc.config }
+func (c *WithConfig[T]) Config() *T { return &c.config }
 
 type Ref[T any] struct{ value T }
 

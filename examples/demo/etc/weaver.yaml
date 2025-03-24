@@ -1,2 +1,13 @@
 app:
-  Name: "demo"
+  Name: "v0.0.2"
+  Version: "0.0.1"
+
+wechat:
+  AppID: "wx1234567890abcdef"
+  AppSecret: "abcdef1234567890abcdef"
+  Version: "0.0.1"
+
+weaver:
+  Logger:
+    Level: "debug"
+    Type: "json"
