@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"go/types"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -138,8 +138,8 @@ func (tset *typeSet) importPackage(path, pkg string) importPkg {
 
 // imports returns the list of packages to import in generated code.
 func (tset *typeSet) imports() []importPkg {
-	sort.Slice(tset.imported, func(i, j int) bool {
-		return tset.imported[i].path < tset.imported[j].path
+	slices.SortFunc(tset.imported, func(a, b importPkg) int {
+		return strings.Compare(a.path, b.path)
 	})
 	return tset.imported
 }
@@ -318,8 +318,7 @@ func (tset *typeSet) checkSerializable(t types.Type) []error {
 			// implement the AutoMarshal interface but hasn't yet been checked,
 			// then we need to recurse to detect cycles.
 			serializable := true
-			for i := 0; i < s.NumFields(); i++ {
-				f := s.Field(i)
+			for f := range s.Fields() {
 				// We store the result of calling check in b rather than
 				// writing serializable = serializable && check(...) because we
 				// don't want to short circuit and avoid calling check.
@@ -439,8 +438,8 @@ func (tset *typeSet) sizeOfType(t types.Type) int {
 
 	case *types.Struct:
 		size := 0
-		for i := 0; i < x.NumFields(); i++ {
-			n := tset.sizeOfType(x.Field(i).Type())
+		for field := range x.Fields() {
+			n := tset.sizeOfType(field.Type())
 			if n < 0 {
 				tset.sizes.Set(t, -1)
 				return -1
@@ -525,8 +524,7 @@ func (tset *typeSet) isMeasurable(t types.Type) bool {
 
 	case *types.Struct:
 		measurable := true
-		for i := 0; i < x.NumFields() && measurable; i++ {
-			f := x.Field(i)
+		for f := range x.Fields() {
 			if f.Pkg() != rootPkg {
 				measurable = false
 				break
@@ -945,8 +943,8 @@ func isValidRouterType(t types.Type) bool {
 	if !ok {
 		return false
 	}
-	for i := 0; i < s.NumFields(); i++ {
-		ft := s.Field(i).Type()
+	for field := range s.Fields() {
+		ft := field.Type()
 		if !isPrimitiveRouter(ft) && !isWeaverAutoMarshal(ft) {
 			return false
 		}

@@ -10,8 +10,11 @@ import (
 
 func init() {
 	codegen.Register(codegen.Registration{
-		Name:  "github.com/jun3372/weaver/examples/hello/user/User",
-		Interface: reflect.TypeOf((*User)(nil)).Elem(),
-		Impl:  reflect.TypeOf(user{}),
+		Name:      "github.com/jun3372/weaver/examples/hello/user/User",
+		Interface: reflect.TypeFor[User](),
+		Impl:      reflect.TypeFor[user](),
 	})
 }
+
+// Check that user implements the User interface.
+var _ User = (*user)(nil)

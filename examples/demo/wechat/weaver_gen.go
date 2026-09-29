@@ -11,11 +11,10 @@ import (
 func init() {
 	codegen.Register(codegen.Registration{
 		Name:      "github.com/jun3372/weaver/examples/demo/wechat/T",
-		Interface: reflect.TypeOf((*T)(nil)).Elem(),
-		Impl:      reflect.TypeOf(impl{}),
+		Interface: reflect.TypeFor[T](),
+		Impl:      reflect.TypeFor[impl](),
 	})
 }
 
 // Check that impl implements the T interface.
 var _ T = (*impl)(nil)
-

@@ -6,7 +6,7 @@ import (
 	"github.com/jun3372/weaver"
 )
 
-type Chat interface{}
+type Chat any
 
 type option struct {
 	AppName string

@@ -18,7 +18,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
+	"strings"
 )
 
 // Component graph edges are embedded in the generated binary as
@@ -54,11 +55,11 @@ func ExtractEdges(data []byte) [][2]string {
 		}
 		result = append(result, [2]string{src, dst})
 	}
-	sort.Slice(result, func(i, j int) bool {
-		if a, b := result[i][0], result[j][0]; a != b {
-			return a < b
+	slices.SortFunc(result, func(a, b [2]string) int {
+		if c := strings.Compare(a[0], b[0]); c != 0 {
+			return c
 		}
-		return result[i][1] < result[j][1]
+		return strings.Compare(a[1], b[1])
 	})
 	return result
 }

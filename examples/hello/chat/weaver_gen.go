@@ -10,8 +10,11 @@ import (
 
 func init() {
 	codegen.Register(codegen.Registration{
-		Name:  "github.com/jun3372/weaver/examples/hello/chat/Chat",
-		Interface: reflect.TypeOf((*Chat)(nil)).Elem(),
-		Impl:  reflect.TypeOf(chat{}),
+		Name:      "github.com/jun3372/weaver/examples/hello/chat/Chat",
+		Interface: reflect.TypeFor[Chat](),
+		Impl:      reflect.TypeFor[chat](),
 	})
 }
+
+// Check that chat implements the Chat interface.
+var _ Chat = (*chat)(nil)

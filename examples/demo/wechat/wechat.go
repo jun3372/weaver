@@ -12,7 +12,7 @@ type option struct {
 }
 
 type T interface {
-	Get() option
+	Get(ctx context.Context) (option, error)
 }
 
 type impl struct {
@@ -20,8 +20,8 @@ type impl struct {
 	weaver.WithConfig[option] `conf:"wechat"` // 配置文件路径
 }
 
-func (i *impl) Get() option {
-	return option{}
+func (i *impl) Get(ctx context.Context) (option, error) {
+	return option{}, nil
 }
 
 func (i *impl) Init(ctx context.Context) error {

@@ -12,7 +12,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/jun3372/weaver/internal/config"
 	"github.com/jun3372/weaver/runtime/codegen"
@@ -63,12 +62,7 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 
 		conf.WatchConfig()
 		conf.OnConfigChange(func(e fsnotify.Event) {
-			for _, fn := range w.watchConfig {
-				fn()
-			}
-
-			w.shutdown(context.Background())
-			w.start(context.Background())
+			w.reloadConfig()
 		})
 	}
 
@@ -284,14 +278,8 @@ func (w *widget) WithRef(impl any, get func(t reflect.Type) (any, error)) error 
 	return nil
 }
 
+// WatchConfig 注册配置热更新回调。调用方必须持有 w.mu（当前仅 get→WithConfig 路径）。
 func (w *widget) WatchConfig(key string, fn func()) {
-	// 初始化切片
-	if w.watchConfig == nil {
-		// w.mu.Lock()
-		// defer w.mu.Unlock()
-		w.watchConfig = make([]func(), 0)
-	}
-
 	w.watchConfig = append(w.watchConfig, fn)
 }
 
@@ -305,45 +293,71 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 	return nil
 }
 
-func (w *widget) start(ctx context.Context) error {
-	var wg *errgroup.Group
-	wg, ctx = errgroup.WithContext(ctx)
+// start 异步启动所有组件。组件 Start 允许长驻阻塞（如监听服务），因此 start
+// 不等待其返回；Start 失败或 panic 时通过 cancel 上报，由调用方响应退出。
+func (w *widget) start(ctx context.Context) {
+	w.mu.Lock()
+	impls := make([]any, 0, len(w.components))
 	for _, impl := range w.components {
-		if i, ok := impl.(interface{ Start(_ context.Context) error }); ok {
-			go wg.Go(func() error {
-				var err error
-				defer func() {
-					if e := recover(); e != nil {
-						log.Error("Component startup encountered an exception", "err", err, "e", e)
-						w.cancel()
-						if err == nil {
-							err = e.(error)
-						}
+		impls = append(impls, impl)
+	}
+	w.mu.Unlock()
 
-						return
-					}
-				}()
+	for _, impl := range impls {
+		i, ok := impl.(interface{ Start(_ context.Context) error })
+		if !ok {
+			continue
+		}
 
-				if err = i.Start(ctx); err != nil {
-					log.Error("Component startup failed", "err", err)
+		go func() {
+			defer func() {
+				if e := recover(); e != nil {
+					log.Error("Component startup encountered an exception", "e", e)
 					w.cancel()
 				}
+			}()
 
-				return err
-			})
-		}
+			if err := i.Start(ctx); err != nil {
+				log.Error("Component startup failed", "err", err)
+				w.cancel()
+			}
+		}()
+	}
+}
+
+func (w *widget) reloadConfig() {
+	w.mu.Lock()
+	fns := make([]func(), len(w.watchConfig))
+	copy(fns, w.watchConfig)
+	w.mu.Unlock()
+
+	for _, fn := range fns {
+		fn()
 	}
 
-	return wg.Wait()
+	w.shutdown(context.Background())
+	// 用 widget 自身的 ctx 重启，保证进程退出信号能传导到重启后的长驻 Start。
+	w.start(w.ctx)
 }
 
 func (w *widget) shutdown(ctx context.Context) {
+	// 快照后在锁外调用用户 Shutdown，避免用户实现死锁时永久占用 w.mu。
+	type entry struct {
+		name string
+		impl any
+	}
+
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	entries := make([]entry, 0, len(w.components))
 	for c, impl := range w.components {
-		if i, ok := impl.(interface{ Shutdown(_ context.Context) error }); ok {
+		entries = append(entries, entry{name: c, impl: impl})
+	}
+	w.mu.Unlock()
+
+	for _, e := range entries {
+		if i, ok := e.impl.(interface{ Shutdown(_ context.Context) error }); ok {
 			if err := i.Shutdown(ctx); err != nil {
-				fmt.Printf("Component %s failed to shutdown: %v\n", c, err)
+				fmt.Printf("Component %s failed to shutdown: %v\n", e.name, err)
 			}
 		}
 	}
