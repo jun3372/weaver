@@ -29,12 +29,13 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
 
-	"golang.org/x/exp/maps"
+	"maps"
+
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/types/typeutil"
 
@@ -161,7 +162,7 @@ type generator struct {
 }
 
 // errorf is like fmt.Errorf but prefixes the error with the provided position.
-func errorf(fset *token.FileSet, pos token.Pos, format string, args ...interface{}) error {
+func errorf(fset *token.FileSet, pos token.Pos, format string, args ...any) error {
 	// Rewrite the position's filename relative to the current directory. This
 	// replaces long filenames like "/home/foo/ServiceWeaver/weaver/weaver.go"
 	// with much shorter filenames like "./weaver.go".
@@ -280,7 +281,7 @@ func newGenerator(opt Options, pkg *packages.Package, fset *token.FileSet, autom
 		pkg:        pkg,
 		tset:       tset,
 		fileset:    fset,
-		components: maps.Values(components),
+		components: slices.Collect(maps.Values(components)),
 	}, nil
 }
 
@@ -377,9 +378,19 @@ func findComponentMethod(pkg *packages.Package, components map[string]*component
 	if !ok {
 		return nil, "", false
 	}
-	cname := fullName(ctype)
-	c, ok := components[cname]
-	if !ok {
+	// components 以组件接口全名为键，而 val 形如 "Impl.Method" 中的 Impl 是
+	// 实现类型，因此这里按实现类型匹配，而不是用实现类型全名查接口名键。
+	// 同一实现类型挂多个组件接口时按接口名取最小者，保证结果确定。
+	var c *component
+	for _, comp := range components {
+		if comp.impl != ctype {
+			continue
+		}
+		if c == nil || comp.intfName() < c.intfName() {
+			c = comp
+		}
+	}
+	if c == nil {
 		return nil, "", false
 	}
 	method := sel.Sel.Name
@@ -413,13 +424,15 @@ func findAutoMarshals(pkg *packages.Package, f *ast.File) ([]*types.Named, error
 		for _, spec := range gendecl.Specs {
 			typespec, ok := spec.(*ast.TypeSpec)
 			if !ok {
-				panic(errorf(pkg.Fset, spec.Pos(), "type declaration has non-TypeSpec spec: %v", spec))
+				errs = append(errs, errorf(pkg.Fset, spec.Pos(), "type declaration has non-TypeSpec spec: %v", spec))
+				continue
 			}
 
 			// Extract the type's name.
 			def, ok := pkg.TypesInfo.Defs[typespec.Name]
 			if !ok {
-				panic(errorf(pkg.Fset, spec.Pos(), "name %v not found", typespec.Name))
+				errs = append(errs, errorf(pkg.Fset, spec.Pos(), "name %v not found", typespec.Name))
+				continue
 			}
 			n, ok := def.Type().(*types.Named)
 			if !ok {
@@ -436,8 +449,7 @@ func findAutoMarshals(pkg *packages.Package, f *ast.File) ([]*types.Named, error
 
 			// Check for an embedded weaver.AutoMarshal field.
 			automarshal := false
-			for i := 0; i < t.NumFields(); i++ {
-				f := t.Field(i)
+			for f := range t.Fields() {
 				if f.Embedded() && isWeaverImplements(f.Type()) {
 					automarshal = true
 					break
@@ -477,6 +489,50 @@ func findAutoMarshals(pkg *packages.Package, f *ast.File) ([]*types.Named, error
 
 // extractComponent attempts to extract a component from the provided TypeSpec.
 // It returns a nil component if the TypeSpec doesn't define a component.
+// warnNonConformingSignatures 检查组件接口方法的签名形状：第一个参数必须是
+// context.Context，最后一个返回值必须是 error。不符合时通过 opt.Warn 告警。
+func warnNonConformingSignatures(opt Options, pkg *packages.Package, impl, intf *types.Named) {
+	if opt.Warn == nil {
+		return
+	}
+
+	iface, ok := intf.Underlying().(*types.Interface)
+	if !ok {
+		return
+	}
+
+	var ctxType types.Type
+	for _, imp := range pkg.Imports {
+		if imp.PkgPath == "context" {
+			if v := imp.Types.Scope().Lookup("Context"); v != nil {
+				ctxType = v.Type()
+			}
+			break
+		}
+	}
+	errType := types.Universe.Lookup("error").Type()
+
+	for m := range iface.Methods() {
+		sig, ok := m.Type().(*types.Signature)
+		if !ok {
+			continue
+		}
+
+		var problems []string
+		if ctxType == nil || sig.Params().Len() == 0 || !types.Identical(sig.Params().At(0).Type(), ctxType) {
+			problems = append(problems, "第一个参数必须是 context.Context")
+		}
+		if sig.Results().Len() == 0 || !types.Identical(sig.Results().At(sig.Results().Len()-1).Type(), errType) {
+			problems = append(problems, "最后一个返回值必须是 error")
+		}
+		if len(problems) > 0 {
+			opt.Warn(errorf(pkg.Fset, m.Pos(),
+				"component %s 的方法 %s 不符合组件方法约定: %s",
+				formatType(pkg, impl), m.Name(), strings.Join(problems, "；")))
+		}
+	}
+}
+
 func extractComponent(opt Options, pkg *packages.Package, file *ast.File, tset *typeSet, spec *ast.TypeSpec) (*component, error) {
 	// Check that the type spec is of the form `type t struct {...}`.
 	s, ok := spec.Type.(*ast.StructType)
@@ -488,7 +544,7 @@ func extractComponent(opt Options, pkg *packages.Package, file *ast.File, tset *
 	}
 	def, ok := pkg.TypesInfo.Defs[spec.Name]
 	if !ok {
-		panic(errorf(pkg.Fset, spec.Pos(), "name %v not found", spec.Name))
+		return nil, errorf(pkg.Fset, spec.Pos(), "name %v not found", spec.Name)
 	}
 	impl, ok := def.Type().(*types.Named)
 	if !ok {
@@ -596,6 +652,12 @@ func extractComponent(opt Options, pkg *packages.Package, file *ast.File, tset *
 			"type %s embeds weaver.Implements[%s] but does not implement interface %s.",
 			formatType(pkg, impl), formatType(pkg, intf), formatType(pkg, intf))
 	}
+
+	// 校验组件方法签名形状（首参 context.Context、末返回 error）。当前生成
+	// 产物不依赖该形状，因此不符合时仅告警；恢复 stub 生成后这是硬性前提。
+	warnNonConformingSignatures(opt, pkg, impl, intf)
+
+	// Disallow generic component implementations.
 
 	// Disallow generic component implementations.
 	if spec.TypeParams != nil && spec.TypeParams.NumFields() != 0 {
@@ -713,15 +775,12 @@ func (c *component) fullIntfName() string {
 // methods returns the component interface's methods.
 func (c *component) methods() []*types.Func {
 	underlying := c.intf.Underlying().(*types.Interface)
-	methods := make([]*types.Func, underlying.NumMethods())
-	for i := 0; i < underlying.NumMethods(); i++ {
-		methods[i] = underlying.Method(i)
-	}
+	methods := slices.Collect(underlying.Methods())
 
 	// Sort the component's methods deterministically. This allows a developer
 	// to re-order the interface methods without the generated code changing.
-	sort.Slice(methods, func(i, j int) bool {
-		return methods[i].Name() < methods[j].Name()
+	slices.SortFunc(methods, func(a, b *types.Func) int {
+		return strings.Compare(a.Name(), b.Name())
 	})
 	return methods
 }
@@ -745,8 +804,7 @@ func (c *component) methods() []*types.Func {
 func routerMethods(pkg *packages.Package, intf, router *types.Named) (types.Type, map[string]bool, error) {
 	underlying := intf.Underlying().(*types.Interface)
 	componentMethods := map[string]*types.Signature{}
-	for i := 0; i < underlying.NumMethods(); i++ {
-		m := underlying.Method(i)
+	for m := range underlying.Methods() {
 		componentMethods[m.Name()] = m.Type().(*types.Signature)
 	}
 
@@ -803,24 +861,32 @@ func routerMethods(pkg *packages.Package, intf, router *types.Named) (types.Type
 	return routingKey, routedMethods, nil
 }
 
-type printFn func(format string, args ...interface{})
+type printFn func(format string, args ...any)
 
 // TODO(mwhittaker): Have generate return an error.
 func (g *generator) generate() error {
 	if len(g.components)+g.tset.automarshalCandidates.Len() == 0 {
-		// There's nothing to generate.
+		// There's nothing to generate. Remove a stale weaver_gen.go left behind
+		// by an earlier run (e.g., the package's last component was deleted);
+		// it may reference types that no longer exist and break the build.
+		if len(g.pkg.Syntax) > 0 {
+			stale := filepath.Join(g.pkgDir(), generatedCodeFile)
+			if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
 		return nil
 	}
 
 	// Process components in deterministic order.
-	sort.Slice(g.components, func(i, j int) bool {
-		return g.components[i].intfName() < g.components[j].intfName()
+	slices.SortFunc(g.components, func(a, b *component) int {
+		return strings.Compare(a.intfName(), b.intfName())
 	})
 
 	// Generate the file body.
 	var body bytes.Buffer
 	{
-		fn := func(format string, args ...interface{}) {
+		fn := func(format string, args ...any) {
 			fmt.Fprintln(&body, fmt.Sprintf(format, args...))
 		}
 		g.generateRegisteredComponents(fn)
@@ -830,9 +896,8 @@ func (g *generator) generate() error {
 			fn(`// Size implementations.`)
 			fn(``)
 			keys := g.sizeFuncNeeded.Keys()
-			sort.Slice(keys, func(i, j int) bool {
-				x, y := keys[i], keys[j]
-				return x.String() < y.String()
+			slices.SortFunc(keys, func(a, b types.Type) int {
+				return strings.Compare(a.String(), b.String())
 			})
 			for _, t := range keys {
 				g.generateSizeFunction(fn, t)
@@ -844,11 +909,17 @@ func (g *generator) generate() error {
 	// that all types added to the body have been imported.
 	var header bytes.Buffer
 	{
-		fn := func(format string, args ...interface{}) {
+		fn := func(format string, args ...any) {
 			fmt.Fprintln(&header, fmt.Sprintf(format, args...))
 		}
 		g.generateImports(fn)
 	}
+
+	// 生成器按组件逐段输出，段间补空行会导致文件末尾多一个空行，不符合 gofmt。
+	bodyTrimmed := bytes.TrimRight(body.Bytes(), "\n")
+	body.Reset()
+	body.Write(bodyTrimmed)
+	body.WriteString("\n")
 
 	// Create a generated file.
 	filename := filepath.Join(g.pkgDir(), generatedCodeFile)
@@ -1000,8 +1071,8 @@ func (g *generator) generateRegisteredComponents(p printFn) {
 		// To get a reflect.Type for an interface, we have to first get a type
 		// of its pointer and then resolve the underlying type. See:
 		//   https://pkg.go.dev/reflect#example-TypeOf
-		p(`		Interface: %s((*%s)(nil)).Elem(),`, reflect.qualify("TypeOf"), g.componentRef(comp))
-		p(`		Impl: %s(%s{}),`, reflect.qualify("TypeOf"), comp.implName())
+		p(`		Interface: %s[%s](),`, reflect.qualify("TypeFor"), g.componentRef(comp))
+		p(`		Impl: %s[%s](),`, reflect.qualify("TypeFor"), comp.implName())
 		// if comp.router != nil {
 		// p(`		Routed: true,`)
 		// }
@@ -1035,7 +1106,7 @@ func noRetryString(comp *component) string {
 			list = append(list, i)
 		}
 	}
-	sort.Ints(list)
+	slices.Sort(list)
 	strs := make([]string, 0, len(list))
 	for _, i := range list {
 		strs = append(strs, strconv.Itoa(i))
@@ -1067,7 +1138,7 @@ func (g *generator) args(sig *types.Signature) string {
 // returns r0, r1, and so on. The returned error is called err.
 func (g *generator) returns(sig *types.Signature) string {
 	var returns strings.Builder
-	for i := 0; i < sig.Results().Len()-1; i++ { // Skip final error
+	for i := range sig.Results().Len() - 1 { // Skip final error
 		rt := sig.Results().At(i).Type()
 		fmt.Fprintf(&returns, "r%d %s, ", i, g.tset.genTypeString(rt))
 	}
@@ -1118,8 +1189,7 @@ func (g *generator) isWeaverEncoded(t types.Type) bool {
 		return g.isWeaverEncoded(x.Key()) && g.isWeaverEncoded(x.Elem())
 
 	case *types.Struct:
-		for i := 0; i < x.NumFields(); i++ {
-			f := x.Field(i)
+		for f := range x.Fields() {
 			if !g.isWeaverEncoded(f.Type()) {
 				return false
 			}
@@ -1128,8 +1198,7 @@ func (g *generator) isWeaverEncoded(t types.Type) bool {
 
 	case *types.Named:
 		if s, ok := x.Underlying().(*types.Struct); ok {
-			for i := 0; i < s.NumFields(); i++ {
-				f := s.Field(i)
+			for f := range s.Fields() {
 				if !g.isWeaverEncoded(f.Type()) {
 					return false
 				}
@@ -1264,8 +1333,8 @@ func (g *generator) findSizeFuncNeededs(t types.Type) {
 
 		case *types.Struct:
 			g.sizeFuncNeeded.Set(t, true)
-			for i := 0; i < x.NumFields(); i++ {
-				f(x.Field(i).Type())
+			for field := range x.Fields() {
+				f(field.Type())
 			}
 
 		case *types.Named:
@@ -1274,8 +1343,8 @@ func (g *generator) findSizeFuncNeededs(t types.Type) {
 			}
 			if s, ok := x.Underlying().(*types.Struct); ok {
 				g.sizeFuncNeeded.Set(t, true)
-				for i := 0; i < s.NumFields(); i++ {
-					f(s.Field(i).Type())
+				for field := range s.Fields() {
+					f(field.Type())
 				}
 			} else {
 				f(x.Underlying())
@@ -1326,8 +1395,7 @@ func (g *generator) generateSizeFunction(p printFn, t types.Type) {
 		s := x.Underlying().(*types.Struct)
 		p("func serviceweaver_size_%s(x *%s) int {", sanitize(t), g.tset.genTypeString(t))
 		p("	size := 0")
-		for i := 0; i < s.NumFields(); i++ {
-			f := s.Field(i)
+		for f := range s.Fields() {
 			p("	size += %s", g.size(fmt.Sprintf("x.%s", f.Name()), f.Type()))
 		}
 		p("	return size")
@@ -1337,8 +1405,7 @@ func (g *generator) generateSizeFunction(p printFn, t types.Type) {
 		// Same as Named.
 		p("func serviceweaver_size_%s(x *%s) int {", sanitize(t), g.tset.genTypeString(t))
 		p("	size := 0")
-		for i := 0; i < x.NumFields(); i++ {
-			f := x.Field(i)
+		for f := range x.Fields() {
 			p("	size += %s", g.size(fmt.Sprintf("x.%s", f.Name()), f.Type()))
 		}
 		p("	return size")
@@ -1444,7 +1511,7 @@ func (g *generator) generateServerStubs(p printFn) {
 			p(`	// TODO(rgrandl): The deferred function above will recover from panics in the`)
 			p(`	// user code: fix this.`)
 			p(`	// Call the local method.`)
-			for i := 0; i < mt.Results().Len()-1; i++ { // Skip final error
+			for i := range mt.Results().Len() - 1 { // Skip final error
 				if b.Len() == 0 {
 					fmt.Fprintf(&b, "r%d", i)
 				} else {
@@ -1466,7 +1533,7 @@ func (g *generator) generateServerStubs(p printFn) {
 			p(` enc := %s()`, g.codegen().qualify("NewEncoder"))
 
 			b.Reset()
-			for i := 0; i < mt.Results().Len()-1; i++ { // Skip final error
+			for i := range mt.Results().Len() - 1 { // Skip final error
 				rt := mt.Results().At(i).Type()
 				res := fmt.Sprintf("r%d", i)
 				p(`	%s`, g.encode("enc", res, rt))
@@ -1532,11 +1599,9 @@ func (g *generator) generateAutoMarshalMethods(p printFn) {
 
 	// Sort the types so the generated methods appear in deterministic order.
 	sorted := g.tset.automarshalCandidates.Keys()
-	sort.Slice(sorted, func(i, j int) bool {
-		ti, tj := sorted[i], sorted[j]
-		return ti.String() < tj.String()
+	slices.SortFunc(sorted, func(a, b types.Type) int {
+		return strings.Compare(a.String(), b.String())
 	})
-
 	ts := g.tset.genTypeString
 	for _, t := range sorted {
 		var innerTypes []types.Type
@@ -1576,8 +1641,7 @@ func (g *generator) generateAutoMarshalMethods(p printFn) {
 		p(`	if x == nil {`)
 		p(`		panic(%s("%s.WeaverMarshal: nil receiver"))`, fmt.qualify("Errorf"), ts(t))
 		p(`	}`)
-		for i := 0; i < s.NumFields(); i++ {
-			fi := s.Field(i)
+		for fi := range s.Fields() {
 			if !isWeaverAutoMarshal(fi.Type()) {
 				p(`	%s`, g.encode("enc", "x."+fi.Name(), fi.Type()))
 				innerTypes = append(innerTypes, fi.Type())
@@ -1591,8 +1655,7 @@ func (g *generator) generateAutoMarshalMethods(p printFn) {
 		p(`	if x == nil {`)
 		p(`		panic(%s("%s.WeaverUnmarshal: nil receiver"))`, fmt.qualify("Errorf"), ts(t))
 		p(`	}`)
-		for i := 0; i < s.NumFields(); i++ {
-			fi := s.Field(i)
+		for fi := range s.Fields() {
 			if !isWeaverAutoMarshal(fi.Type()) {
 				p(`	%s`, g.decode("dec", "&x."+fi.Name(), fi.Type()))
 			}
@@ -1639,8 +1702,7 @@ func (g *generator) generateRouterMethodsFor(p printFn, comp *component, t types
 		p(`	h.Write%s(%s(r))`, exported(tname), tname)
 	} else {
 		s := t.Underlying().(*types.Struct)
-		for i := 0; i < s.NumFields(); i++ {
-			f := s.Field(i)
+		for f := range s.Fields() {
 			if isWeaverAutoMarshal(f.Type()) {
 				continue
 			}
@@ -1659,8 +1721,7 @@ func (g *generator) generateRouterMethodsFor(p printFn, comp *component, t types
 		p(`	enc.Write%s(%s(r))`, exported(t.Underlying().String()), t.Underlying().String())
 	} else {
 		s := t.Underlying().(*types.Struct)
-		for i := 0; i < s.NumFields(); i++ {
-			f := s.Field(i)
+		for f := range s.Fields() {
 			if isWeaverAutoMarshal(f.Type()) {
 				continue
 			}
@@ -1843,7 +1904,7 @@ func (g *generator) decode(stub, v string, t types.Type) string {
 // generateEncDecMethods generates all necessary encoding and decoding methods.
 func (g *generator) generateEncDecMethods(p printFn) {
 	printedHeader := false
-	printer := func(format string, args ...interface{}) {
+	printer := func(format string, args ...any) {
 		if !printedHeader {
 			p(`// Encoding/decoding implementations.`)
 			printedHeader = true
@@ -1922,7 +1983,7 @@ func (g *generator) generateEncDecMethodsFor(p printFn, t types.Type) {
 		// Note that arg is never nil.
 		p(``)
 		p(`func serviceweaver_enc_%s(enc *%s, arg *%s) {`, sanitize(x), g.codegen().qualify("Encoder"), ts(x))
-		p(`	for i := 0; i < %d; i++ {`, x.Len())
+		p(`	for i := range %d {`, x.Len())
 		p(`		%s`, g.encode("enc", "arg[i]", x.Elem()))
 		p(`	}`)
 		p(`}`)
@@ -1930,7 +1991,7 @@ func (g *generator) generateEncDecMethodsFor(p printFn, t types.Type) {
 		// Note that res is never nil.
 		p(``)
 		p(`func serviceweaver_dec_%s(dec *%s, res *%s) {`, sanitize(x), g.codegen().qualify("Decoder"), ts(x))
-		p(`	for i := 0; i < %d; i++ {`, x.Len())
+		p(`	for i := range %d {`, x.Len())
 		p(`		%s`, g.decode("dec", "&res[i]", x.Elem()))
 		p(`	}`)
 		p(`}`)
@@ -1945,7 +2006,7 @@ func (g *generator) generateEncDecMethodsFor(p printFn, t types.Type) {
 		p(`		return`)
 		p(`	}`)
 		p(`	enc.Len(len(arg))`)
-		p(`	for i := 0; i < len(arg); i++ {`)
+		p(`	for i := range arg {`)
 		p(`		%s`, g.encode("enc", "arg[i]", x.Elem()))
 		p(`	}`)
 		p(`}`)
@@ -1957,7 +2018,7 @@ func (g *generator) generateEncDecMethodsFor(p printFn, t types.Type) {
 		p(`		return nil`)
 		p(`	}`)
 		p(`	res := make(%s, n)`, ts(x))
-		p(`	for i := 0; i < n; i++ {`)
+		p(`	for i := range n {`)
 		p(`		%s`, g.decode("dec", "&res[i]", x.Elem()))
 		p(`	}`)
 		p(`	return res`)
@@ -1989,7 +2050,7 @@ func (g *generator) generateEncDecMethodsFor(p printFn, t types.Type) {
 		p(`	res := make(%s, n)`, ts(x))
 		p(`	var k %s`, ts(x.Key()))
 		p(`	var v %s`, ts(x.Elem()))
-		p(`	for i := 0; i < n; i++ {`)
+		p(`	for i := range n {`)
 		p(`		%s`, g.decode("dec", "&k", x.Key()))
 		p(`		%s`, g.decode("dec", "&v", x.Elem()))
 		p(`		res[k] = v`)
@@ -2110,7 +2171,7 @@ func sanitize(t types.Type) string {
 			// This is an instantiated type.
 			parts := make([]string, 1+n)
 			parts[0] = x.Obj().Name()
-			for i := 0; i < n; i++ {
+			for i := range n {
 				parts[i+1] = sanitize(x.TypeArgs().At(i))
 			}
 			return strings.Join(parts, "_")
@@ -2174,7 +2235,7 @@ func uniqueName(t types.Type) string {
 		// This is an instantiated type.
 		base := fmt.Sprintf("Named(%s.%s)", x.Obj().Pkg().Path(), x.Obj().Name())
 		parts := make([]string, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			parts[i] = uniqueName(x.TypeArgs().At(i))
 		}
 		return fmt.Sprintf("%s[%s]", base, strings.Join(parts, ", "))
@@ -2185,7 +2246,7 @@ func uniqueName(t types.Type) string {
 		// https://go.dev/ref/spec#Type_identity.
 		fields := make([]string, x.NumFields())
 		var b strings.Builder
-		for i := 0; i < x.NumFields(); i++ {
+		for i := range x.NumFields() {
 			b.Reset()
 			f := x.Field(i)
 			if !f.Embedded() {

@@ -34,7 +34,12 @@ func main() {
 			for {
 				select {
 				case <-ticker.C:
-					t.Logger(ctx).Info("hello world", "conf", t.Config(), "opt", t.opt.Config(), "wechat", t.Get().Get())
+					opt, err := t.Get().Get(ctx)
+					if err != nil {
+						t.Logger(ctx).Error("wechat Get 失败", "err", err)
+						continue
+					}
+					t.Logger(ctx).Info("hello world", "conf", t.Config(), "opt", t.opt.Config(), "wechat", opt)
 				case <-ctx.Done():
 					ticker.Stop()
 					return
