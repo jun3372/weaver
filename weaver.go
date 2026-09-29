@@ -19,7 +19,7 @@ import (
 	"github.com/jun3372/weaver/version"
 )
 
-type Main interface{}
+type Main any
 
 func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Context, *T) error) error {
 	var filename string
@@ -50,10 +50,12 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 		return err
 	}
 
-	// 启动组件
-	if err = widget.start(widget.ctx); err != nil {
-		return err
-	}
+	// 启动组件。
+	//
+	// 错误契约：start 异步启动组件且不返回错误。组件 Start 失败或 panic 时
+	// 会调用 cancel() 使 ctx 结束并记录 ERROR 日志；app 必须监听 ctx 否则
+	// 进程会带着失败的组件继续运行。
+	widget.start(widget.ctx)
 
 	if m, ok := main.(*T); !ok {
 		return errors.New("main type error")
