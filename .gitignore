@@ -58,3 +58,8 @@ dist/
 
 # Go build cache
 *.cache
+
+# Docs (VitePress)
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
