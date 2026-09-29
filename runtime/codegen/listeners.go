@@ -18,7 +18,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -39,7 +39,7 @@ import (
 // MakeListenersString returns a string that should be emitted into generated
 // code to represent the set of listeners associated with a given component.
 func MakeListenersString(component string, listeners []string) string {
-	sort.Strings(listeners) // generate a stable encoding
+	slices.Sort(listeners) // generate a stable encoding
 	lisstr := strings.Join(listeners, ",")
 	return fmt.Sprintf("⟦%s:wEaVeRlIsTeNeRs:%s→%s⟧\n",
 		checksumListeners(component, lisstr), component, lisstr)
@@ -74,8 +74,8 @@ func ExtractListeners(data []byte) []ComponentListeners {
 		})
 	}
 	// Generate a stable list.
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Component < results[j].Component
+	slices.SortFunc(results, func(a, b ComponentListeners) int {
+		return strings.Compare(a.Component, b.Component)
 	})
 	return results
 }

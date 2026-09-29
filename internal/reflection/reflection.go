@@ -6,7 +6,7 @@ import (
 )
 
 func Type[T any]() reflect.Type {
-	return reflect.TypeOf((*T)(nil)).Elem()
+	return reflect.TypeFor[T]()
 }
 
 func ComponentName[T any]() string {

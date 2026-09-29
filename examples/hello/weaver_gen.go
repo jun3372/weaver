@@ -11,8 +11,11 @@ import (
 
 func init() {
 	codegen.Register(codegen.Registration{
-		Name:  "github.com/jun3372/weaver/Main",
-		Interface: reflect.TypeOf((*weaver.Main)(nil)).Elem(),
-		Impl:  reflect.TypeOf(app{}),
+		Name:      "github.com/jun3372/weaver/Main",
+		Interface: reflect.TypeFor[weaver.Main](),
+		Impl:      reflect.TypeFor[app](),
 	})
 }
+
+// Check that app implements the weaver.Main interface.
+var _ weaver.Main = (*app)(nil)
