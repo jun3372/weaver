@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 )
 
@@ -61,9 +63,19 @@ func (r *registry) register(reg Registration) error {
 	}
 
 	ptr := &reg
+	if existing, ok := r.byName[reg.Name]; ok && !sameRegistration(existing, ptr) {
+		return fmt.Errorf("Register(%q): duplicate component name, previously registered impl %v", reg.Name, existing.Impl)
+	}
+	if existing, ok := r.components[reg.Interface]; ok && !sameRegistration(existing, ptr) {
+		return fmt.Errorf("Register(%q): component interface %v already registered as %q", reg.Name, reg.Interface, existing.Name)
+	}
 	r.components[reg.Interface] = ptr
 	r.byName[reg.Name] = ptr
 	return nil
+}
+
+func sameRegistration(a, b *Registration) bool {
+	return a.Name == b.Name && a.Interface == b.Interface && a.Impl == b.Impl
 }
 
 func verifyRegistration(reg Registration) error {
@@ -90,6 +102,9 @@ func (r *registry) allComponents() []*Registration {
 	for _, info := range r.components {
 		components = append(components, info)
 	}
+	slices.SortFunc(components, func(a, b *Registration) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 	return components
 }
 
