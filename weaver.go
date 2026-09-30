@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/pkg/errors"
@@ -21,22 +22,35 @@ import (
 
 type Main any
 
-func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Context, *T) error) error {
-	var filename string
-	var printVersion bool
-	flag.StringVar(&filename, "conf", os.Getenv("SERVICE_CONFIG"), "config file path")
-	flag.BoolVar(&printVersion, "version", strings.ToLower(os.Getenv("SERVICE_VERSION")) == "true", "print version info")
-	flag.Parse()
+var (
+	flagsOnce sync.Once
+	confFile  string
+	showVer   bool
+)
 
-	if printVersion {
+func parseFlags() {
+	flagsOnce.Do(func() {
+		flag.StringVar(&confFile, "conf", os.Getenv("SERVICE_CONFIG"), "config file path")
+		flag.BoolVar(&showVer, "version", strings.ToLower(os.Getenv("SERVICE_VERSION")) == "true", "print version info")
+	})
+	// 宿主程序可能已自行调用过 flag.Parse
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+}
+
+func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Context, *T) error) error {
+	parseFlags()
+
+	if showVer {
 		version.PrintVersion()
 		return nil
 	}
 
 	var conf *viper.Viper
-	if filename != "" {
+	if confFile != "" {
 		conf = viper.New()
-		conf.SetConfigFile(filename)
+		conf.SetConfigFile(confFile)
 		if err := conf.ReadInConfig(); err != nil {
 			return errors.Errorf("Fatal error config file: %v", err)
 		}
@@ -52,10 +66,14 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 	// 启动组件。
 	//
-	// 错误契约：start 异步启动组件且不返回错误。组件 Start 失败或 panic 时
-	// 会调用 cancel() 使 ctx 结束并记录 ERROR 日志；app 必须监听 ctx 否则
-	// 进程会带着失败的组件继续运行。
-	widget.start(widget.ctx)
+	// 错误契约：start 等待全部组件 Start 启动后即返回,不等待长驻 Start;
+	// Start 同步快速失败时立刻中止 Run 并返回该错误,其余失败或 panic
+	// 会调用 cancel() 使 ctx 结束并记录 ERROR 日志;app 必须监听 ctx
+	// 否则进程会带着失败的组件继续运行。
+	if err := widget.start(widget.ctx); err != nil {
+		widget.shutdown(context.Background())
+		return err
+	}
 
 	if m, ok := main.(*T); !ok {
 		return errors.New("main type error")
@@ -68,9 +86,24 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	return err
 }
 
-type WithConfig[T any] struct{ config T }
+type WithConfig[T any] struct {
+	mu     sync.RWMutex
+	config T
+}
 
-func (c *WithConfig[T]) Config() *T { return &c.config }
+// Config 返回配置的副本,配置热更新期间的读取是并发安全的。
+func (c *WithConfig[T]) Config() T {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.config
+}
+
+// SetConfig 整体替换配置,由框架在配置注入/热更新时通过反射调用。
+func (c *WithConfig[T]) SetConfig(v T) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.config = v
+}
 
 type Ref[T any] struct{ value T }
 

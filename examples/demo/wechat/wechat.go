@@ -7,8 +7,9 @@ import (
 )
 
 type option struct {
-	AppName string
-	Version string
+	AppID     string
+	AppSecret string
+	Version   string
 }
 
 type T interface {
@@ -21,7 +22,7 @@ type impl struct {
 }
 
 func (i *impl) Get(ctx context.Context) (option, error) {
-	return option{}, nil
+	return i.Config(), nil
 }
 
 func (i *impl) Init(ctx context.Context) error {

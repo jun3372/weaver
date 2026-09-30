@@ -45,6 +45,6 @@ func (u *user) SayHello(ctx context.Context, name string) (response, error) {
 	u.Logger(ctx).Info("user SayHello", "name", name)
 	return response{
 		Message: "Hello " + name,
-		Option:  *u.Config(),
+		Option:  u.Config(),
 	}, nil
 }
