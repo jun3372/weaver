@@ -1,5 +1,8 @@
 # Weaver
 
+[![Release](https://img.shields.io/github/v/release/jun3372/weaver)](https://github.com/jun3372/weaver/releases)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jun3372/weaver.svg)](https://pkg.go.dev/github.com/jun3372/weaver)
+
 Weaver 是一个轻量级的 Go 语言应用框架，专注于提供简单、灵活且功能强大的组件化应用程序构建体验。它通过依赖注入、配置管理和生命周期管理等特性，帮助开发者构建模块化、可维护的应用程序。
 
 ## 特性
@@ -19,6 +22,12 @@ Weaver 是一个轻量级的 Go 语言应用框架，专注于提供简单、灵
 
 ```bash
 go get github.com/jun3372/weaver
+```
+
+如需固定到某个发布版本（如 v0.1.3）：
+
+```bash
+go get github.com/jun3372/weaver@v0.1.3
 ```
 
 ## 快速开始
