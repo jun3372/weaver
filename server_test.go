@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -320,4 +321,301 @@ func TestMultipleServersConcurrently(t *testing.T) {
 	cancel()
 	requireServeReturn(t, apiErr, "HTTP api")
 	requireServeReturn(t, adminErr, "HTTP admin")
+}
+
+// startTCPServe 启动 TCPServer 并等待监听就绪,返回停止函数。
+func startTCPServe(t *testing.T, opt TCPOption, h TCPHandler) (*TCPServer, func()) {
+	t.Helper()
+	var s TCPServer
+	s.SetConfig(opt)
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Serve(ctx, h) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.Addr() != "" {
+			return &s, func() {
+				cancel()
+				select {
+				case <-errCh:
+				case <-time.After(6 * time.Second):
+					t.Error("TCPServer 退出超时")
+				}
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("TCPServer 启动超时")
+	return nil, nil
+}
+
+func startUDPServe(t *testing.T, opt UDPOption, h UDPPacketHandler) (*UDPServer, func()) {
+	t.Helper()
+	var s UDPServer
+	s.SetConfig(opt)
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Serve(ctx, h) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.Addr() != "" {
+			return &s, func() {
+				cancel()
+				select {
+				case <-errCh:
+				case <-time.After(6 * time.Second):
+					t.Error("UDPServer 退出超时")
+				}
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("UDPServer 启动超时")
+	return nil, nil
+}
+
+// --- 问题 1: handler panic 不得击穿进程 ---
+
+type panicAwareTCP struct{}
+
+func (panicAwareTCP) ServeTCP(_ context.Context, conn net.Conn) {
+	buf := make([]byte, 64)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return
+	}
+	if string(buf[:n]) == "boom" {
+		panic("tcp handler panic")
+	}
+	_, _ = conn.Write(buf[:n])
+}
+
+func TestTCPServeRecoversHandlerPanic(t *testing.T) {
+	s, stop := startTCPServe(t, TCPOption{Addr: "127.0.0.1:0"}, panicAwareTCP{})
+	defer stop()
+
+	boom, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := boom.Write([]byte("boom")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	_ = boom.Close()
+
+	good, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatalf("panic 后服务应仍在运行: %v", err)
+	}
+	defer good.Close()
+	if _, err := good.Write([]byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	_ = good.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(good, buf); err != nil {
+		t.Fatalf("panic 后回显失败: %v", err)
+	}
+	if string(buf) != "ping" {
+		t.Fatalf("期望回显 ping,得到 %q", buf)
+	}
+}
+
+type panicAwareUDP struct{}
+
+func (panicAwareUDP) ServeUDP(_ context.Context, pkt UDPPacket) ([]byte, error) {
+	if string(pkt.Data) == "boom" {
+		panic("udp handler panic")
+	}
+	return pkt.Data, nil
+}
+
+func TestUDPServeRecoversHandlerPanic(t *testing.T) {
+	s, stop := startUDPServe(t, UDPOption{Addr: "127.0.0.1:0"}, panicAwareUDP{})
+	defer stop()
+
+	conn, err := net.Dial("udp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte("boom")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if _, err := conn.Write([]byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		t.Fatalf("panic 后服务应仍在运行: %v", err)
+	}
+	if string(buf) != "ping" {
+		t.Fatalf("期望回显 ping,得到 %q", buf)
+	}
+}
+
+// --- 问题 2: HTTPServer 超时配置生效 ---
+
+func TestHTTPServerReadHeaderTimeout(t *testing.T) {
+	var s HTTPServer
+	s.SetConfig(HTTPOption{
+		Addr:              "127.0.0.1:0",
+		ReadHeaderTimeout: 150 * time.Millisecond,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Serve(ctx, http.NewServeMux()) }()
+	defer func() {
+		cancel()
+		<-errCh
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for s.Addr() == "" {
+		if time.Now().After(deadline) {
+			t.Fatal("HTTPServer 启动超时")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	// 只发送半个请求头,不给空行,应在 ReadHeaderTimeout 后被服务端关闭
+	if _, err := conn.Write([]byte("GET / HTTP/1.1\r\nHost: x\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 16)
+	if _, err := conn.Read(buf); err == nil {
+		t.Fatal("慢速请求头应在 ReadHeaderTimeout 后被关闭,但收到了响应数据")
+	}
+}
+
+// --- 问题 3: TCP/UDP 资源上限 ---
+
+func TestTCPServerMaxConns(t *testing.T) {
+	s, stop := startTCPServe(t, TCPOption{Addr: "127.0.0.1:0", MaxConns: 1},
+		discardTCP{})
+	defer stop()
+
+	first, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if _, err := first.Write([]byte("hold")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond) // 等待服务端 accept 并登记
+
+	second, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	_ = second.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 4)
+	if _, err := second.Read(buf); err == nil {
+		t.Fatal("超过 MaxConns 的新连接应被立即关闭")
+	}
+}
+
+type discardTCP struct{}
+
+func (discardTCP) ServeTCP(_ context.Context, conn net.Conn) {
+	_, _ = io.Copy(io.Discard, conn)
+}
+
+func TestTCPServerConnIdleTimeout(t *testing.T) {
+	s, stop := startTCPServe(t, TCPOption{
+		Addr:            "127.0.0.1:0",
+		ConnIdleTimeout: 150 * time.Millisecond,
+	}, discardTCP{})
+	defer stop()
+
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	// 保持沉默超过空闲超时后,连接应被服务端关闭
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 4)
+	if _, err := conn.Read(buf); err == nil {
+		t.Fatal("空闲超时后连接应被关闭")
+	}
+
+	// 活跃连接不受影响:持续读写期间 deadline 自动续期
+	active, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer active.Close()
+	deadline := time.Now().Add(time.Second)
+	buf = make([]byte, 1)
+	for time.Now().Before(deadline) {
+		if _, err := active.Write([]byte("x")); err != nil {
+			t.Fatalf("活跃连接不应被空闲超时关闭: %v", err)
+		}
+		_ = active.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+		_, _ = active.Read(buf)
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func TestUDPServerMaxConcurrent(t *testing.T) {
+	var calls atomic.Int32
+	started := make(chan struct{}, 8)
+	release := make(chan struct{})
+	h := blockingUDP{calls: &calls, started: started, release: release}
+
+	s, stop := startUDPServe(t, UDPOption{Addr: "127.0.0.1:0", MaxConcurrent: 1}, h)
+	defer stop()
+
+	conn, err := net.Dial("udp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte("one")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("第一个报文未被处理")
+	}
+
+	_, _ = conn.Write([]byte("two"))
+	time.Sleep(200 * time.Millisecond)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("MaxConcurrent=1 时第二个报文应被丢弃,实际处理了 %d 个", got)
+	}
+
+	close(release)
+}
+
+type blockingUDP struct {
+	calls   *atomic.Int32
+	started chan struct{}
+	release chan struct{}
+}
+
+func (h blockingUDP) ServeUDP(_ context.Context, pkt UDPPacket) ([]byte, error) {
+	h.calls.Add(1)
+	select {
+	case h.started <- struct{}{}:
+	default:
+	}
+	<-h.release
+	return pkt.Data, nil
 }

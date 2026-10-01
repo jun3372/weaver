@@ -14,22 +14,60 @@ import (
 // 服务组件默认优雅关闭等待时间。
 const defaultShutdownTimeout = 5 * time.Second
 
+// HTTPServer 超时与请求头默认值;零值字段取默认,显式负值关闭对应超时。
+const (
+	defaultReadTimeout       = 30 * time.Second
+	defaultReadHeaderTimeout = 10 * time.Second
+	defaultWriteTimeout      = 30 * time.Second
+	defaultIdleTimeout       = 120 * time.Second
+	defaultMaxHeaderBytes    = 1 << 20
+)
+
+// timeoutOr 解析超时配置:0 取默认,负值返回 0(关闭超时),其余原样返回。
+func timeoutOr(v, def time.Duration) time.Duration {
+	switch {
+	case v < 0:
+		return 0
+	case v == 0:
+		return def
+	default:
+		return v
+	}
+}
+
+// maxHeaderBytesOr 解析请求头大小上限:<=0 取默认。
+func maxHeaderBytesOr(v int) int {
+	if v <= 0 {
+		return defaultMaxHeaderBytes
+	}
+	return v
+}
+
 // HTTPOption 是 HTTPServer 的配置项,通过 conf tag 注入。
 type HTTPOption struct {
 	Addr            string        // 监听地址,如 ":8080";Serve 时读取,修改需重启
 	ShutdownTimeout time.Duration // 优雅关闭等待时间,缺省 5s
+	// 超时防慢速攻击(slowloris):0 取默认,负值显式关闭。
+	ReadTimeout       time.Duration // 整个请求读取超时,缺省 30s
+	ReadHeaderTimeout time.Duration // 请求头读取超时,缺省 10s
+	WriteTimeout      time.Duration // 响应写出超时,缺省 30s(长连接流式响应需显式关闭)
+	IdleTimeout       time.Duration // keep-alive 空闲超时,缺省 120s
+	MaxHeaderBytes    int           // 请求头大小上限,缺省 1MB
 }
 
 // TCPOption 是 TCPServer 的配置项,通过 conf tag 注入。
 type TCPOption struct {
 	Addr            string
 	ShutdownTimeout time.Duration
+	MaxConns        int           // 最大并发连接数,超过后立即关闭新连接;<=0 不限
+	ConnIdleTimeout time.Duration // 连接空闲超时,每次收发自动续期;<=0 不限
 }
 
 // UDPOption 是 UDPServer 的配置项,通过 conf tag 注入。
 type UDPOption struct {
 	Addr            string
 	ShutdownTimeout time.Duration
+	MaxConcurrent   int // 单包处理最大并发数,超过后丢弃报文;<=0 不限
 }
 
 // TCPHandler 处理单条 TCP 连接,conn 由框架在关闭时负责回收。
@@ -102,7 +140,14 @@ func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
 
 	s.mu.Lock()
 	s.ln = ln
-	s.srv = &http.Server{Handler: h}
+	s.srv = &http.Server{
+		Handler:           h,
+		ReadTimeout:       timeoutOr(opt.ReadTimeout, defaultReadTimeout),
+		ReadHeaderTimeout: timeoutOr(opt.ReadHeaderTimeout, defaultReadHeaderTimeout),
+		WriteTimeout:      timeoutOr(opt.WriteTimeout, defaultWriteTimeout),
+		IdleTimeout:       timeoutOr(opt.IdleTimeout, defaultIdleTimeout),
+		MaxHeaderBytes:    maxHeaderBytesOr(opt.MaxHeaderBytes),
+	}
 	s.mu.Unlock()
 	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
 	defer func() {
@@ -228,13 +273,32 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 			return fmt.Errorf("tcp server: accept: %w", err)
 		}
 
+		// 先包装再登记,保证 map 中的 key 与 goroutine 退出时 delete 的一致
+		if opt.ConnIdleTimeout > 0 {
+			conn = &idleConn{Conn: conn, idle: opt.ConnIdleTimeout}
+		}
+
 		s.mu.Lock()
+		full := opt.MaxConns > 0 && len(s.conns) >= opt.MaxConns
+		if full {
+			s.mu.Unlock()
+			slog.Default().Warn("tcp server 连接数已达上限,拒绝新连接",
+				"max", opt.MaxConns, "remote", conn.RemoteAddr().String())
+			_ = conn.Close()
+			continue
+		}
 		s.conns[conn] = struct{}{}
 		s.mu.Unlock()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if e := recover(); e != nil {
+					slog.Default().Error("tcp server handler panic",
+						"err", e, "remote", conn.RemoteAddr().String())
+				}
+			}()
 			defer func() {
 				_ = conn.Close()
 				s.mu.Lock()
@@ -244,6 +308,23 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 			h.ServeTCP(ctx, conn)
 		}()
 	}
+}
+
+// idleConn 包装 net.Conn:每次读写前重置绝对 deadline,实现空闲超时;
+// 活跃连接的 deadline 自动续期,长驻协议不受影响。
+type idleConn struct {
+	net.Conn
+	idle time.Duration
+}
+
+func (c *idleConn) Read(p []byte) (int, error) {
+	_ = c.SetReadDeadline(time.Now().Add(c.idle))
+	return c.Conn.Read(p)
+}
+
+func (c *idleConn) Write(p []byte) (int, error) {
+	_ = c.SetWriteDeadline(time.Now().Add(c.idle))
+	return c.Conn.Write(p)
 }
 
 // waitConns 关闭全部活跃连接以解除 handler 阻塞,并限时等待其退出。
@@ -341,6 +422,10 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 
 	var wg sync.WaitGroup
 	buf := make([]byte, 65535)
+	var sem chan struct{}
+	if opt.MaxConcurrent > 0 {
+		sem = make(chan struct{}, opt.MaxConcurrent)
+	}
 	for {
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil {
@@ -355,10 +440,28 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 			return fmt.Errorf("udp server: read: %w", err)
 		}
 
+		if sem != nil {
+			select {
+			case sem <- struct{}{}:
+			default:
+				slog.Default().Warn("udp server 并发已达上限,丢弃报文",
+					"max", opt.MaxConcurrent, "remote", addr.String())
+				continue
+			}
+		}
+
 		pkt := UDPPacket{Data: append([]byte(nil), buf[:n]...), Addr: addr}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			if sem != nil {
+				defer func() { <-sem }()
+			}
+			defer func() {
+				if e := recover(); e != nil {
+					slog.Default().Error("udp server handler panic", "err", e, "remote", pkt.Addr.String())
+				}
+			}()
 			resp, err := h.ServeUDP(ctx, pkt)
 			if err != nil {
 				slog.Default().Error("udp server handler failed", "err", err)
