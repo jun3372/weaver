@@ -186,6 +186,9 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 
 	ln, err := net.Listen("tcp", opt.Addr)
 	if err != nil {
+		s.mu.Lock()
+		s.served = false // 允许修正配置后重试
+		s.mu.Unlock()
 		return fmt.Errorf("tcp server: listen %s: %w", opt.Addr, err)
 	}
 	s.mu.Lock()
@@ -305,6 +308,9 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 
 	conn, err := net.ListenPacket("udp", opt.Addr)
 	if err != nil {
+		s.mu.Lock()
+		s.served = false // 允许修正配置后重试
+		s.mu.Unlock()
 		return fmt.Errorf("udp server: listen %s: %w", opt.Addr, err)
 	}
 	s.mu.Lock()
