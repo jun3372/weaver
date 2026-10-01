@@ -1,0 +1,11 @@
+app:
+  Name: "http-example"
+
+http:
+  Addr: ":8080"
+  Message: "hello v2 hot-reloaded"
+
+weaver:
+  Logger:
+    Level: "info"
+    Type: "json"
