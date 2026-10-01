@@ -68,6 +68,43 @@ func (i *echo) Start(ctx context.Context) error {
 
 The read loop, concurrent dispatch and reply writes are handled by the framework.
 
+## Security Options
+
+Since v0.1.3 the server components ship with production-grade protections **enabled by default with zero configuration**. Every option can be tuned via its `conf` section; setting a negative/`<=0` value disables the corresponding limit.
+
+### Handler Panic Isolation
+
+The goroutines serving TCP connections and UDP packets are recovered by the framework: a panicking handler is logged as ERROR (with the peer address) and its connection is closed / packet dropped — **the process keeps running**.
+
+### HTTP Timeouts and Header Limits (anti-slowloris)
+
+```yaml
+api:
+  addr: ":8080"
+  readTimeout: 30s         # full request read timeout, default 30s
+  readHeaderTimeout: 10s   # request header read timeout, default 10s, primary slowloris defense
+  writeTimeout: 30s        # response write timeout, default 30s; set to -1s for long-lived streaming responses (SSE etc.)
+  idleTimeout: 120s        # keep-alive idle timeout, default 120s
+  maxHeaderBytes: 1048576  # max request header size, default 1MB
+```
+
+### TCP Connection Limit and Idle Timeout
+
+```yaml
+tcp:
+  addr: ":8081"
+  maxConns: 1000           # max concurrent connections, excess are rejected immediately; <=0 unlimited (default)
+  connIdleTimeout: 300s    # idle timeout, renewed on every read/write so active connections are unaffected; <=0 unlimited (default)
+```
+
+### UDP Concurrency Limit
+
+```yaml
+udp:
+  addr: ":8082"
+  maxConcurrent: 512       # max in-flight packet handlers, excess packets are dropped with a warning; <=0 unlimited (default)
+```
+
 ## Multiple Servers in One Process
 
 Declare multiple named instances in a single component (each with its own `conf` key), or spread them across components:

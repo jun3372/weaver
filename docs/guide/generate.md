@@ -96,7 +96,13 @@ package main
 weaver version
 ```
 
-应用本身也支持 `-version` 参数（或环境变量 `SERVICE_VERSION=true`）打印版本信息：
+v0.1.3 起版本信息支持自动回退，未做任何构建注入也能看到有意义的内容：
+
+- **Version**：`-ldflags` 注入值 → `go install` 安装时的模块版本 → `(dev)`
+- **Go Version**：编译器实际版本
+- **Git Commit / Build Time**：构建时的 VCS 戳记（建议构建时加 `-buildvcs=true`；工作区有未提交修改会追加 `-modified`）
+
+应用本身也支持 `-version` 参数（或环境变量 `SERVICE_VERSION=true`）打印版本信息，回退逻辑相同：
 
 ```bash
 go run main.go -version

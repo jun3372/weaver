@@ -96,7 +96,13 @@ package main
 weaver version
 ```
 
-Applications also support `-version` (or the environment variable `SERVICE_VERSION=true`) to print version info:
+Since v0.1.3 version info falls back automatically, so the output is meaningful even without any build-time injection:
+
+- **Version**: `-ldflags` injected value → module version when installed via `go install` → `(dev)`
+- **Go Version**: the actual toolchain version
+- **Git Commit / Build Time**: VCS stamping embedded at build time (add `-buildvcs=true` when building; uncommitted changes append `-modified`)
+
+Applications also support `-version` (or the environment variable `SERVICE_VERSION=true`) to print version info, with the same fallback logic:
 
 ```bash
 go run main.go -version
