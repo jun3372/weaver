@@ -183,6 +183,14 @@ func (w *widget) deregister(name string) {
 	delete(w.components, name)
 }
 
+// isConfigManagedType 判断字段类型是否为框架托管配置的类型:
+// WithConfig[T] 及 HTTPServer/TCPServer/UDPServer 服务组件,
+// 它们均具备 unexported config 字段与 SetConfig 方法,共用注入链路。
+func isConfigManagedType(name string) bool {
+	return strings.HasPrefix(name, "WithConfig[") ||
+		name == "HTTPServer" || name == "TCPServer" || name == "UDPServer"
+}
+
 func (w *widget) WithConfig(v reflect.Value) {
 	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		panic(errors.Errorf("invalid non pointer to struct value: %v", v))
@@ -192,7 +200,7 @@ func (w *widget) WithConfig(v reflect.Value) {
 	t := s.Type()
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !strings.HasPrefix(f.Type.Name(), "WithConfig[") {
+		if !isConfigManagedType(f.Type.Name()) {
 			continue
 		}
 

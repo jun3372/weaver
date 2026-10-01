@@ -29,6 +29,28 @@ cd examples/demo
 go run . -conf etc/weaver.yaml
 ```
 
+## http — HTTP/TCP/UDP 服务与配置热更新
+
+单进程同时运行三个服务，演示服务组件（`weaver.HTTPServer` / `TCPServer` / `UDPServer`）与配置热更新：
+
+- `main.go`：主应用，引用三个服务组件
+- `server/`：HTTP 服务，响应内容随配置热更新实时变化
+- `tcp/`：TCP echo 服务
+- `udp/`：UDP echo 服务
+- `etc/`：配置文件
+
+```bash
+cd examples/http
+go run . -conf etc/weaver.yaml
+curl localhost:8080                      # hello v1
+printf 'ping\n' | nc localhost 8081      # TCP echo: ping
+printf 'ping\n' | nc -u localhost 8082   # UDP echo: PING
+# 修改 etc/weaver.yaml 中 http.message 后无需重启
+curl localhost:8080                      # hello v2
+```
+
+详见[服务组件](/guide/servers)。
+
 ## template — 项目模板
 
 最小化的项目模板，建议新项目从复制 `examples/template` 开始：
