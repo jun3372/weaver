@@ -266,6 +266,8 @@ weaver:
 
 ### 2. 创建 HTTP 服务组件
 
+内嵌 `weaver.HTTPServer`，监听、长驻运行与优雅关闭全部由框架托管，只需在 `Start` 中挂载 handler：
+
 ```go
 package http
 
@@ -273,72 +275,53 @@ import (
     "context"
     "fmt"
     "net/http"
-    
+
     "github.com/jun3372/weaver"
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/trace"
 )
 
 type Server interface {
     Start(ctx context.Context) error
-    Shutdown(ctx context.Context) error
-}
-
-type options struct {
-    Host string
-    Port int
 }
 
 type serverImpl struct {
     weaver.Implements[Server]
-    weaver.WithConfig[options] `conf:"http"`
-    
-    server *http.Server
+    weaver.HTTPServer `conf:"http"` // 监听地址等由 conf key "http" 注入
 }
 
-func (s *serverImpl) Init(ctx context.Context) error {
-    cfg := s.Config()
-    addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-    
+func (s *serverImpl) Start(ctx context.Context) error {
     // 创建带有追踪的 HTTP 处理器
     handler := http.NewServeMux()
     handler.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
         // 从请求上下文中获取 span
         span := trace.SpanFromContext(r.Context())
         span.SetAttributes(attribute.String("user.id", r.URL.Query().Get("user_id")))
-        
+
         // 记录业务日志，包含追踪信息
         s.Logger(r.Context()).Info("Received hello request")
-        
+
         fmt.Fprintf(w, "Hello, World!")
     })
-    
-    // 使用 otelhttp 包装 HTTP 处理器，自动添加追踪
+
+    // 使用 otelhttp 包装 HTTP 处理器，自动添加追踪;
+    // Serve 长驻阻塞，ctx 结束后按配置优雅关闭
     otelHandler := otelhttp.NewHandler(handler, "server",
         otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
     )
-    
-    s.server = &http.Server{
-        Addr:    addr,
-        Handler: otelHandler,
-    }
-    
-    s.Logger(ctx).Info("HTTP server initialized", "addr", addr)
-    return nil
-}
-
-func (s *serverImpl) Start(ctx context.Context) error {
-    s.Logger(ctx).Info("Starting HTTP server")
-    return s.server.ListenAndServe()
-}
-
-func (s *serverImpl) Shutdown(ctx context.Context) error {
-    s.Logger(ctx).Info("Shutting down HTTP server")
-    return s.server.Shutdown(ctx)
+    return s.HTTPServer.Serve(ctx, otelHandler)
 }
 ```
+
+对应的配置文件（`addr` 由服务组件消费，超时防慢速攻击等防护已内置默认值）：
+
+```yaml
+http:
+  addr: ":8080"
+```
+
+无需再手写 `&http.Server{}`、`ListenAndServe` 与 `Shutdown`——v0.1.2 起这些由 `weaver.HTTPServer` 全权负责。
 
 ### 3. 在应用中使用 HTTP 客户端
 
@@ -360,7 +343,6 @@ import (
 
 type app struct {
     weaver.Implements[weaver.Main]
-    weaver.WithConfig[options] `conf:"app"`
     httpServer weaver.Ref[http.Server] // 引用 HTTP 服务组件
 }
 
