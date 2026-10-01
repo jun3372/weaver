@@ -25,6 +25,10 @@ go test ./...
 
 # 代码生成：组件接口变更后必须重新生成
 go run github.com/jun3372/weaver/cmd/weaver generate <包路径>
+
+# 项目脚手架与组件实现生成
+weaver init [dir]        # 初始化完整可运行项目
+weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 ```
 
 - 无 Makefile、无 CI 配置，验证全靠上述 Go 命令。
@@ -39,7 +43,7 @@ go run github.com/jun3372/weaver/cmd/weaver generate <包路径>
 | `server.go` | 服务组件：`HTTPServer` / `TCPServer` / `UDPServer`，配置注入同 `WithConfig` 链路，`Serve(ctx, handler)` 长驻并优雅关闭 |
 | `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger/服务组件配置、并发启动、优雅关闭（startWG barrier） |
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |
-| `cmd/weaver/` | cobra CLI：`generate`、`version`（`init` 是空 stub） |
+| `cmd/weaver/` | cobra CLI：`init`（项目脚手架）、`make`（组件实现生成）、`generate`（注册代码生成）、`version` |
 | `internal/config` | 系统配置结构体，配置 tag 为 `["weaver", "config", "conf"]` |
 | `internal/generate` | 代码生成引擎 |
 | `internal/reflection` | `Type[T]`、`ComponentName[T]` 等反射工具 |
@@ -68,5 +72,5 @@ go run github.com/jun3372/weaver/cmd/weaver generate <包路径>
 2. **`internal/` 不可被外部导入**；外部使用方只能依赖根包与 `runtime/` 导出 API。
 3. **`widget.go` 使用 `unsafe.Pointer` 向未导出字段注入依赖**——重构时保持注入路径不变，勿"顺手清理"。
 4. `examples/` 下的三个示例必须保持可编译；`examples/hello/main_test.go` 依赖其中的 `run()` 函数。
-5. 已知的无害瑕疵，不必修复除非被要求：cobra 命令 `Short` 描述仍写着 "Hugo"（复制粘贴残留）；`cmd/weaver/init` 是空 stub；`runtime/version` 基本未被使用。
+5. 已知的无害瑕疵，不必修复除非被要求：cobra `version` 命令 `Short` 描述仍写着 "Hugo"（复制粘贴残留）；`runtime/version` 基本未被使用。
 6. 依赖管理通过 `go.mod` 直接编辑 + `go mod tidy`，无额外工具。

@@ -14,9 +14,15 @@ const (
 )
 
 var GenerateCmd = &cobra.Command{
-	Use:   "generate",
-	Short: "Print the version number of Hugo",
-	Long:  `All software has versions. This is Hugo's`,
+	Use:   "generate [packages]",
+	Short: "为 Weaver 组件生成注册代码(weaver_gen.go)",
+	Long: `为 Weaver 组件生成注册代码(weaver_gen.go)。
+
+用法:
+  weaver generate [-tags taglist] [packages]
+
+示例:
+  weaver generate . ./greet`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			slog.Warn("Missing required argument")
