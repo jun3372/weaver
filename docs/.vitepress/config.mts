@@ -11,6 +11,17 @@ const guide = (prefix: string, t: Record<string, string>) => [
   { text: t.opentelemetry, link: `${prefix}/guide/opentelemetry` },
 ]
 
+const sidebarLabels = (prefix: string, zh: boolean) => ({
+  gettingStarted: zh ? '快速开始' : 'Getting Started',
+  concepts: zh ? '核心概念:组件与依赖注入' : 'Core Concepts: Components & DI',
+  config: zh ? '配置管理' : 'Configuration',
+  servers: zh ? '服务组件:HTTP / TCP / UDP' : 'Server Components: HTTP / TCP / UDP',
+  logger: zh ? '日志系统' : 'Logging',
+  lifecycle: zh ? '生命周期管理' : 'Lifecycle Management',
+  generate: zh ? 'CLI 工具' : 'CLI Tools',
+  opentelemetry: zh ? 'OpenTelemetry 集成' : 'OpenTelemetry Integration',
+})
+
 export default defineConfig({
   base: '/weaver/',
   lang: 'zh-CN',
@@ -39,16 +50,7 @@ export default defineConfig({
           { text: 'GitHub', link: 'https://github.com/jun3372/weaver' },
         ],
         sidebar: {
-          '/guide/': [{ text: '指南', items: guide('', {
-            gettingStarted: '快速开始',
-            concepts: '核心概念：组件与依赖注入',
-            config: '配置管理',
-            servers: '服务组件：HTTP / TCP / UDP',
-            logger: '日志系统',
-            lifecycle: '生命周期管理',
-            generate: '代码生成工具',
-            opentelemetry: 'OpenTelemetry 集成',
-          }) }],
+          '/guide/': [{ text: '指南', items: guide('', sidebarLabels('', true)) }],
           '/': [],
         },
         outline: { label: '本页目录' },
@@ -72,16 +74,7 @@ export default defineConfig({
           { text: 'GitHub', link: 'https://github.com/jun3372/weaver' },
         ],
         sidebar: {
-          '/en/guide/': [{ text: 'Guide', items: guide('/en', {
-            gettingStarted: 'Getting Started',
-            concepts: 'Core Concepts: Components & DI',
-            config: 'Configuration',
-            servers: 'Server Components: HTTP / TCP / UDP',
-            logger: 'Logging',
-            lifecycle: 'Lifecycle Management',
-            generate: 'Code Generation',
-            opentelemetry: 'OpenTelemetry Integration',
-          }) }],
+          '/en/guide/': [{ text: 'Guide', items: guide('/en', sidebarLabels('/en', false)) }],
           '/en/': [],
         },
         outline: { label: 'On This Page' },

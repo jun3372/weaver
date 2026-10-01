@@ -72,6 +72,18 @@ func TestHTTPServerServeAndGracefulShutdown(t *testing.T) {
 	cancel()
 	requireServeReturn(t, errCh, "HTTP")
 
+	// Serve 返回后运行态应清空:Addr 归零,且可重新 Serve
+	if addr := srv.Addr(); addr != "" {
+		t.Fatalf("Serve 返回后 Addr 应为空,实际 %q", addr)
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	errCh2 := make(chan error, 1)
+	go func() { errCh2 <- srv.Serve(ctx2, mux) }()
+	waitAddr(t, srv.Addr)
+	cancel2()
+	requireServeReturn(t, errCh2, "HTTP retry")
+
 	// 关闭后端口应释放:重新绑定同地址族应成功
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -118,6 +130,16 @@ func TestHTTPServerListenError(t *testing.T) {
 	if err := srv.Serve(context.Background(), http.NewServeMux()); err == nil {
 		t.Fatal("端口占用时 Serve 应返回错误")
 	}
+
+	// listen 失败后修正配置应可重试
+	srv.SetConfig(HTTPOption{Addr: ":0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.Serve(ctx, okHandler()) }()
+	waitAddr(t, srv.Addr)
+	cancel()
+	requireServeReturn(t, errCh, "HTTP retry after listen failure")
 }
 
 type echoTCPHandler struct{}
@@ -162,6 +184,18 @@ func TestTCPServerEchoAndGracefulShutdown(t *testing.T) {
 	cancel()
 	requireServeReturn(t, errCh, "TCP")
 
+	// Serve 返回后 Addr 归零,且可重新 Serve
+	if addr := srv.Addr(); addr != "" {
+		t.Fatalf("Serve 返回后 Addr 应为空,实际 %q", addr)
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	errCh2 := make(chan error, 1)
+	go func() { errCh2 <- srv.Serve(ctx2, echoTCPHandler{}) }()
+	waitAddr(t, srv.Addr)
+	cancel2()
+	requireServeReturn(t, errCh2, "TCP retry")
+
 	// 关闭后连接应被框架回收:Read 应返回错误
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	if _, err := conn.Read(buf); err == nil {
@@ -175,6 +209,29 @@ func TestTCPServerRequiresAddr(t *testing.T) {
 		!strings.Contains(err.Error(), "未配置监听地址") {
 		t.Fatalf("空 Addr 应返回明确错误,实际: %v", err)
 	}
+}
+
+func TestTCPServerRetryAfterListenFailure(t *testing.T) {
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	var srv TCPServer
+	srv.SetConfig(TCPOption{Addr: ln.Addr().String()})
+	if err := srv.Serve(context.Background(), echoTCPHandler{}); err == nil {
+		t.Fatal("端口占用时 Serve 应返回错误")
+	}
+
+	srv.SetConfig(TCPOption{Addr: ":0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.Serve(ctx, echoTCPHandler{}) }()
+	waitAddr(t, srv.Addr)
+	cancel()
+	requireServeReturn(t, errCh, "TCP retry after listen failure")
 }
 
 type echoUDPHandler struct{}
@@ -212,6 +269,18 @@ func TestUDPServerEcho(t *testing.T) {
 
 	cancel()
 	requireServeReturn(t, errCh, "UDP")
+
+	// Serve 返回后 Addr 归零,且可重新 Serve
+	if addr := srv.Addr(); addr != "" {
+		t.Fatalf("Serve 返回后 Addr 应为空,实际 %q", addr)
+	}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	errCh2 := make(chan error, 1)
+	go func() { errCh2 <- srv.Serve(ctx2, echoUDPHandler{}) }()
+	waitAddr(t, srv.Addr)
+	cancel2()
+	requireServeReturn(t, errCh2, "UDP retry")
 }
 
 // 同一组件声明多个服务实例(不同 conf key)应可并发服务。

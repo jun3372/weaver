@@ -2,8 +2,14 @@ app:
   Name: "http-example"
 
 http:
-  Addr: ":8080"
-  Message: "hello v2 hot-reloaded"
+  Addr: ":8080"          # 服务组件 Start 时读取,修改需重启
+  Message: "hello v1"    # 每次请求实时读取,热更新无需重启
+
+tcp:
+  Addr: ":8081"
+
+udp:
+  Addr: ":8082"
 
 weaver:
   Logger:
