@@ -9,6 +9,7 @@
 核心能力：
 - 基于接口的组件 + 依赖注入（`weaver.Ref[T]`）
 - 配置注入（`weaver.WithConfig[T]` + `conf:` tag），基于 Viper 支持热更新
+- 服务组件（`weaver.HTTPServer` / `weaver.TCPServer` / `weaver.UDPServer` + `conf:` tag）：框架托管监听、连接管理与优雅关闭，用户只需在 `Start` 中挂载 handler；同一进程可运行多个实例
 - 生命周期钩子（`Init` / `Start` / `Shutdown`），Start 异步启动（失败经 cancel 上报）
 - 基于 `log/slog` 的日志（`weaver.Implements[T]` 自带 `Logger(ctx)`，自动注入 trace/span ID）
 - OpenTelemetry trace 上下文透传
@@ -35,7 +36,8 @@ go run github.com/jun3372/weaver/cmd/weaver generate <包路径>
 | 路径 | 职责 |
 |---|---|
 | `weaver.go` | 公共 API：`Main`、`Run[T,P]`、`Implements[T]`、`WithConfig[T]`、`Ref[T]`、`Exec` |
-| `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger、errgroup 启动、配置变更重启与优雅关闭 |
+| `server.go` | 服务组件：`HTTPServer` / `TCPServer` / `UDPServer`，配置注入同 `WithConfig` 链路，`Serve(ctx, handler)` 长驻并优雅关闭 |
+| `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger/服务组件配置、并发启动、优雅关闭（startWG barrier） |
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |
 | `cmd/weaver/` | cobra CLI：`generate`、`version`（`init` 是空 stub） |
 | `internal/config` | 系统配置结构体，配置 tag 为 `["weaver", "config", "conf"]` |
@@ -47,6 +49,7 @@ go run github.com/jun3372/weaver/cmd/weaver generate <包路径>
 | `runtime/version` | ServiceWeaver API 版本常量，基本为遗留代码 |
 | `examples/hello` | 最小示例，含 `main_test.go`，配置文件 `weaver.yaml` / `weaver.toml` |
 | `examples/demo` | wechat 组件示例，演示 `Config()` 与具名 `WithConfig` 字段两种注入方式 |
+| `examples/http` | 单进程 HTTP/TCP/UDP 三服务示例，演示服务组件与配置热更新（`etc/weaver.yaml`） |
 | `examples/template` | 在 `init()` 中手动注册代码生成结果（无 `weaver_gen.go`）的写法 |
 
 依赖方向：根包 → `runtime/codegen` + `runtime/logger` + `internal/*`；生成的 `weaver_gen.go` → `runtime/codegen.Register`。
