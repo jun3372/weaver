@@ -15,23 +15,27 @@ const (
 
 var GenerateCmd = &cobra.Command{
 	Use:   "generate [packages]",
-	Short: "为 Weaver 组件生成注册代码(weaver_gen.go)",
-	Long: `为 Weaver 组件生成注册代码(weaver_gen.go)。
+	Short: "为组件接口生成注册代码(weaver_gen.go)",
+	Long: `扫描指定包中的 Weaver 组件接口,生成注册代码 weaver_gen.go。
+
+生成文件带 //go:build !ignoreWeaverGen 构建标签,由其中的 init()
+把组件注册到运行时注册表;组件接口变更后必须重新执行本命令。
+packages 为 Go 包导入路径或相对目录,可一次传多个。
 
 用法:
   weaver generate [-tags taglist] [packages]
 
 示例:
-  weaver generate . ./greet`,
+  weaver generate .              # 生成当前包
+  weaver generate . ./greet      # 一次生成多个包
+  weaver generate -tags foo .    # 附加构建标签`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			slog.Warn("Missing required argument")
 			return
 		}
 		buildTags := "ignoreWeaverGen"
-		var tags string
-		cmd.Flags().StringVar(&tags, "tags", "", "Build tags to use when generating code")
-		if tags != "" { // tags flag was specified=.
+		if tags, _ := cmd.Flags().GetString("tags"); tags != "" {
 			buildTags = buildTags + "," + tags
 		}
 
@@ -39,4 +43,8 @@ var GenerateCmd = &cobra.Command{
 			fmt.Println("Failed to generate code", err)
 		}
 	},
+}
+
+func init() {
+	GenerateCmd.Flags().String("tags", "", "生成代码时附加的构建标签,逗号分隔")
 }
