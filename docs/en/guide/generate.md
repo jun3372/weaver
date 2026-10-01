@@ -1,6 +1,6 @@
-# Code Generation
+# CLI Tools
 
-Weaver ships a CLI tool, `cmd/weaver`, that generates component registration code. We recommend installing it locally, then using the `weaver` command for everything.
+Weaver ships a CLI tool, `cmd/weaver`, covering project scaffolding, component implementation generation and registration codegen. We recommend installing it locally, then using the `weaver` command for everything.
 
 ## Installation
 
@@ -15,6 +15,56 @@ weaver version
 ```
 
 If you prefer not to install, `go run` works as a one-off alternative (every `weaver` command below can be replaced with `go run github.com/jun3372/weaver/cmd/weaver`).
+
+## Scaffold a Project
+
+`weaver init` scaffolds a complete, runnable Weaver project:
+
+```bash
+weaver init myapp --module example.com/myapp
+cd myapp
+go run . -conf weaver.yaml
+```
+
+What you get:
+
+- `main.go`: the Main component (injects the example component, reads config)
+- `greet/`: an example component demonstrating `weaver.Implements` / `WithConfig` / lifecycle hooks
+- `weaver.yaml`: config file (app / component / weaver logger)
+- Automatically runs `go mod init`, `go get github.com/jun3372/weaver@latest` and `weaver generate` (covering all subpackages)
+
+Non-empty directories are rejected unless `--force` is given; `--module` defaults to the directory name.
+
+## Generate a Component Implementation
+
+After writing a component interface, `weaver make` generates the implementation skeleton and registers it automatically:
+
+```bash
+weaver make ./greet Echo
+```
+
+This creates `echo_impl.go` in the interface's package:
+
+```go
+// echo 是 Echo 的组件实现骨架,由 weaver make 生成。
+type echo struct {
+	weaver.Implements[Echo]
+}
+
+func (i *echo) Shout(p0 context.Context, p1 string) (string, error) {
+	// TODO: implement
+	var (
+		r0 string
+		r1 error
+	)
+	return r0, r1
+}
+```
+
+- Unnamed parameters become `p0`, `p1`; results are returned as zero-value variables — just fill in the `// TODO`
+- Method signatures must follow the component convention: first parameter `context.Context`, last result `error` (empty interfaces like `type T interface{}` work too)
+- `weaver generate` runs automatically on the package afterwards
+- Existing target files are never overwritten without `--force`; unknown interface names list the package's candidates
 
 ## Generate Registration Code
 
