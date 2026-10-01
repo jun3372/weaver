@@ -25,9 +25,9 @@ func (s *serverImpl) Start(ctx context.Context) error {
 
 Start-phase behavior:
 
-- All components start concurrently via an errgroup; any failure triggers overall shutdown
-- Component panics are recovered and treated as start failures
-- A normal return from `Start` means the component finished running (long-running services should block inside `Start`, e.g. `ListenAndServe`)
+- All components start concurrently; `weaver.Run` proceeds to the main logic once every `Start` has been launched (long-running `Start`s don't block startup)
+- A synchronous fast failure in `Start` aborts startup and returns the error; async failures and panics trigger overall shutdown
+- Long-running services should block inside `Start` (or use the server components' `Serve`, see [Server Components](/en/guide/servers))
 
 ## Shutdown
 
@@ -35,7 +35,6 @@ Start-phase behavior:
 
 - After the main logic returns, before `weaver.Run` exits — all components are shut down
 - After a system signal (`SIGINT` / `SIGQUIT` / `SIGTERM`) cancels the context
-- When a config hot reload restarts components (Shutdown first, then Start)
 
 ```go
 func (a *app) Shutdown(ctx context.Context) error {

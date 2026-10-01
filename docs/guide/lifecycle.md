@@ -25,9 +25,9 @@ func (s *serverImpl) Start(ctx context.Context) error {
 
 Start 阶段的行为：
 
-- 所有组件通过 errgroup 并发启动，任一组件失败都会触发整体退出
-- 组件 panic 会被 recover 并视为启动失败
-- `Start` 正常返回即视为该组件运行结束（长驻服务应阻塞在 `Start` 内，如 `ListenAndServe`）
+- 所有组件并发启动，全部 Start 已启动后 `weaver.Run` 才进入主逻辑（不阻塞长驻的 Start）
+- Start 同步快速失败会中止应用启动并返回错误；异步失败与 panic 会触发整体退出
+- 长驻服务应阻塞在 `Start` 内（或使用服务组件的 `Serve`，见[服务组件](/guide/servers)）
 
 ## Shutdown
 
@@ -35,7 +35,6 @@ Start 阶段的行为：
 
 - 主逻辑返回后，`weaver.Run` 退出前统一关闭所有组件
 - 收到系统信号（`SIGINT` / `SIGQUIT` / `SIGTERM`）导致 ctx 取消后
-- 配置文件热更新触发组件重启时（先 Shutdown 再 Start）
 
 ```go
 func (a *app) Shutdown(ctx context.Context) error {

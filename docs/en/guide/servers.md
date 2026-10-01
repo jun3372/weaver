@@ -1,0 +1,105 @@
+# Server Components: HTTP / TCP / UDP
+
+Weaver ships three declarative server components — `weaver.HTTPServer`, `weaver.TCPServer` and `weaver.UDPServer`. Listening, accept loops, connection tracking and graceful shutdown are all handled by the framework; you only declare the address via a `conf:` tag and attach a handler inside `Start`.
+
+## HTTP Server
+
+Embed `weaver.HTTPServer` in your component:
+
+```go
+type api struct {
+    weaver.Implements[Api]
+    weaver.HTTPServer `conf:"api"`
+}
+
+func (i *api) Start(ctx context.Context) error {
+    mux := http.NewServeMux()
+    mux.HandleFunc("/", handle)
+    return i.HTTPServer.Serve(ctx, mux)
+}
+```
+
+Config file:
+
+```yaml
+api:
+  addr: ":8080"
+  shutdownTimeout: 5s
+```
+
+`Serve(ctx, handler)` blocks until the context is done (app exit or signal), then shuts down gracefully within `shutdownTimeout` and returns `nil`. Listen failures (e.g. port in use) return an error and abort startup.
+
+## TCP Server
+
+Embed `weaver.TCPServer` and implement `weaver.TCPHandler`:
+
+```go
+type echo struct {
+    weaver.Implements[Echo]
+    weaver.TCPServer `conf:"tcp"`
+}
+
+// ServeTCP handles a single connection; its lifecycle is managed by the framework
+func (echoHandler) ServeTCP(ctx context.Context, conn net.Conn) {
+    // read/write conn until the peer closes
+}
+
+func (i *echo) Start(ctx context.Context) error {
+    return i.TCPServer.Serve(ctx, echoHandler{})
+}
+```
+
+When the context is done the framework stops accepting, closes every active connection (unblocking handlers stuck in reads) and waits (bounded) for them to finish.
+
+## UDP Server
+
+Embed `weaver.UDPServer` and implement `weaver.UDPPacketHandler`:
+
+```go
+// Returning non-nil bytes sends a reply back to the source address; return nil for no reply
+func (echoHandler) ServeUDP(ctx context.Context, pkt weaver.UDPPacket) ([]byte, error) {
+    return pkt.Data, nil
+}
+
+func (i *echo) Start(ctx context.Context) error {
+    return i.UDPServer.Serve(ctx, echoHandler{})
+}
+```
+
+The read loop, concurrent dispatch and reply writes are handled by the framework.
+
+## Multiple Servers in One Process
+
+Declare multiple named instances in a single component (each with its own `conf` key), or spread them across components:
+
+```go
+type gateway struct {
+    weaver.Implements[Gateway]
+    api   weaver.HTTPServer `conf:"api"`   // :8080
+    admin weaver.HTTPServer `conf:"admin"` // :8081
+}
+```
+
+## Config Hot Reload
+
+Server components share the same injection pipeline as `WithConfig`; config file changes are re-injected automatically (see [Configuration](/en/guide/config)). Semantic notes:
+
+- **`Addr` is read when `Serve` starts**: changing the listen address requires a process restart;
+- Business values read inside your handler (e.g. a greeting message) **take effect on every request**, no restart needed.
+
+See `examples/http` for a complete demo: one process running HTTP (:8080), TCP (:8081) and UDP (:8082) with config hot reload.
+
+```bash
+cd examples/http
+go run . -conf etc/weaver.yaml
+curl localhost:8080        # hello v1
+# edit http.message in etc/weaver.yaml, no restart needed
+curl localhost:8080        # hello v2
+printf 'ping\n' | nc localhost 8081      # TCP echo
+printf 'ping\n' | nc -u localhost 8082   # UDP echo
+```
+
+## Further Reading
+
+- [Configuration](/en/guide/config)
+- [Lifecycle Management](/en/guide/lifecycle)
