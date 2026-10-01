@@ -41,9 +41,9 @@ func (g *gen) render(iface *types.Interface) ([]byte, error) {
 	for _, path := range paths {
 		alias := g.imports[path]
 		if alias != lastSegment(path) {
-			imports.WriteString("\t" + alias + " \"" + path + "\"\n")
+			_, _ = imports.WriteString("\t" + alias + " \"" + path + "\"\n")
 		} else {
-			imports.WriteString("\t\"" + path + "\"\n")
+			_, _ = imports.WriteString("\t\"" + path + "\"\n")
 		}
 	}
 
@@ -73,10 +73,10 @@ func (g *gen) method(m *types.Func) string {
 	if sig.Results().Len() > 0 {
 		body.WriteString("\tvar (\n")
 		for i := 0; i < sig.Results().Len(); i++ {
-			body.WriteString("\t\tr" + fmt.Sprint(i) + " " + g.typeString(sig.Results().At(i).Type()) + "\n")
+			_, _ = body.WriteString("\t\tr" + fmt.Sprint(i) + " " + g.typeString(sig.Results().At(i).Type()) + "\n")
 		}
 		body.WriteString("\t)\n")
-		body.WriteString("\treturn " + joinNames(sig.Results().Len(), "r") + "\n")
+		_, _ = body.WriteString("\treturn " + joinNames(sig.Results().Len(), "r") + "\n")
 	}
 
 	return fmt.Sprintf("func (i *%s) %s(%s) (%s) {\n%s}\n\n",
