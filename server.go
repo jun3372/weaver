@@ -104,6 +104,13 @@ func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
 	s.ln = ln
 	s.srv = &http.Server{Handler: h}
 	s.mu.Unlock()
+	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
+	defer func() {
+		s.mu.Lock()
+		s.srv = nil
+		s.ln = nil
+		s.mu.Unlock()
+	}()
 
 	timeout := opt.ShutdownTimeout
 	if timeout <= 0 {
@@ -183,12 +190,17 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 	s.served = true
 	s.conns = make(map[net.Conn]struct{})
 	s.mu.Unlock()
+	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
+	defer func() {
+		s.mu.Lock()
+		s.ln = nil
+		s.conns = nil
+		s.served = false
+		s.mu.Unlock()
+	}()
 
 	ln, err := net.Listen("tcp", opt.Addr)
 	if err != nil {
-		s.mu.Lock()
-		s.served = false // 允许修正配置后重试
-		s.mu.Unlock()
 		return fmt.Errorf("tcp server: listen %s: %w", opt.Addr, err)
 	}
 	s.mu.Lock()
@@ -305,12 +317,16 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 	}
 	s.served = true
 	s.mu.Unlock()
+	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
+	defer func() {
+		s.mu.Lock()
+		s.conn = nil
+		s.served = false
+		s.mu.Unlock()
+	}()
 
 	conn, err := net.ListenPacket("udp", opt.Addr)
 	if err != nil {
-		s.mu.Lock()
-		s.served = false // 允许修正配置后重试
-		s.mu.Unlock()
 		return fmt.Errorf("udp server: listen %s: %w", opt.Addr, err)
 	}
 	s.mu.Lock()
