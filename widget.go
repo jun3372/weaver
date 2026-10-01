@@ -177,9 +177,8 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	return obj, nil
 }
 
+// deregister 清理注册失败的组件;调用方必须已持有 w.mu(get 路径)。
 func (w *widget) deregister(name string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
 	delete(w.components, name)
 }
 
