@@ -3,6 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/jun3372/weaver)](https://github.com/jun3372/weaver/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jun3372/weaver.svg)](https://pkg.go.dev/github.com/jun3372/weaver)
 [![Docs](https://img.shields.io/badge/docs-jun3372.github.io%2Fweaver-blue)](https://jun3372.github.io/weaver/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Weaver 是一个基于组件（component）的轻量级 Go 应用框架。通过接口组件、依赖注入与声明式配置，把应用拆解为可独立演进的服务单元；网络服务、生命周期与优雅关闭由框架托管，业务代码只保留逻辑本身。
 
@@ -381,3 +382,7 @@ go build ./... && go vet ./... && go test ./...
 ```
 
 涉及组件接口变更时请重新执行 `weaver generate`。
+
+## 许可证
+
+[MIT License](LICENSE)
