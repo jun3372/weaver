@@ -11,7 +11,7 @@ Weaver 是一个基于组件（component）的轻量级 Go 应用框架。通过
 
 - 📦 **组件化架构**：基于接口的组件系统，`weaver.Ref[T]` 声明依赖，启动时自动装配并支持循环引用
 - 🔧 **声明式配置注入**：`weaver.WithConfig[T]` + `conf:` 标签，基于 [Viper](https://github.com/spf13/viper) 支持 YAML / TOML / JSON，**配置热更新无需重启**
-- 🌐 **服务组件**：`weaver.HTTPServer` / `TCPServer` / `UDPServer` 声明式托管监听、连接管理与优雅关闭，内置生产级安全防护
+- 🌐 **服务组件**：`weaver.HTTPServer` / `TCPServer` / `UDPServer` 声明式托管监听、连接管理与优雅关闭，内置生产级安全防护；`weaver.Listener[H]` 进一步聚合为"实现 handler 即自动 Serve"，支持 TCP 会话 / UDP 对端管理与定点推送
 - 🔄 **生命周期管理**：`Init` / `Start` / `Shutdown` 钩子，`Start` 支持长驻阻塞，进程退出时统一优雅关闭
 - 📝 **结构化日志**：基于标准库 `slog`，`Logger(ctx)` 自动附加 trace/span ID，支持文件轮转
 - 🔍 **OpenTelemetry 兼容**：trace 上下文自动透传到日志，可与 otelhttp 等标准生态无缝集成
@@ -278,6 +278,86 @@ func (echoHandler) ServeUDP(ctx context.Context, pkt weaver.UDPPacket) ([]byte, 
 }
 ```
 
+### Listener：自动注入配置与 Handler
+
+不想写 `Start` 时，改用 `weaver.Listener[H]`：组件实现 `http.Handler` / `TCPHandler` / `UDPPacketHandler` 任意一个并内嵌 Listener，框架即自动注入配置并以组件自身为 handler 启动服务。
+
+```go
+type echo struct {
+    weaver.Implements[Echo]
+    weaver.Listener[weaver.Handler] `conf:"listener"` // 配置自动注入,无需 Start
+    weaver.WithConfig[option]       `conf:"listener"` // 可选:业务配置共用同一 key
+}
+
+func (i *echo) ServeHTTP(w http.ResponseWriter, _ *http.Request) { ... }
+```
+
+HTTP 的 handler 也可以不写在组件上，`Listener` 内置两种注入方式（优先级高于组件自身实现），在 `Init` 中完成即可：
+
+```go
+type api struct {
+    weaver.Implements[T]
+    weaver.Listener[weaver.Handler] `conf:"listener"`
+}
+
+// 方式一:Mux() 惰性创建标准库 ServeMux,直接注册多路由
+func (i *api) Init(ctx context.Context) error {
+    i.Mux().HandleFunc("GET /hello", i.hello)
+    i.Mux().HandleFunc("GET /{$}", i.index) // 未注册路径由 ServeMux 返回 404
+    return nil
+}
+
+// 方式二:Set 接入 gin/echo/chi 等外部框架引擎(一切实现 http.Handler 的类型)
+func (i *api) Init(ctx context.Context) error {
+    e := gin.New()
+    e.GET("/hello", i.hello)
+    i.Handler(e)
+    return nil
+}
+```
+
+组件实现多种 handler 接口时，为每个协议声明具名 Listener、以具体接口作类型参数，三种服务并行启动：
+
+```go
+type gateway struct {
+    weaver.Implements[T]
+    httpL weaver.Listener[http.Handler]            `conf:"http"`
+    tcpL  weaver.Listener[weaver.TCPHandler]       `conf:"tcp"`
+    udpL  weaver.Listener[weaver.UDPPacketHandler] `conf:"udp"`
+}
+
+func (g *gateway) Init(ctx context.Context) error {
+    g.httpL.Mux().HandleFunc("GET /{$}", g.index) // 多协议时按 Listener 分别注入
+    return nil
+}
+```
+
+TCP/UDP 还内置连接管理与定点发送，可在 handler 外主动推送：
+
+```go
+for _, s := range i.Sessions() {          // TCP 活跃会话快照(含 LastActive 最近活跃时间)
+    _ = i.Send(s.ID, []byte("push"))      // 定点发送(连接级写锁,与 handler 并发安全)
+    _ = i.CloseConn(s.ID)                 // 主动断开
+}
+for _, p := range i.Peers() {             // UDP 活跃对端快照(保留 5 分钟内活跃)
+    _ = i.SendTo(p.Addr, []byte("push")) // 定点发送
+}
+```
+
+组件按需实现可选接口即可收到连接事件（回调由框架隔离 panic，不应长时间阻塞）：
+
+```go
+// TCP:连接建立与断开时触发(含 CloseConn 主动断开、活跃超时踢除)
+func (i *echo) OnConnect(s weaver.TCPSession)    { i.Logger(context.Background()).Info("上线", "remote", s.RemoteAddr) }
+func (i *echo) OnDisconnect(s weaver.TCPSession) { i.Logger(context.Background()).Info("离线", "id", s.ID) }
+
+// UDP:对端首包登记与超 TTL(5 分钟,后台清扫)离线时触发
+func (i *echo) OnPeerConnect(addr net.Addr)    {}
+func (i *echo) OnPeerDisconnect(addr net.Addr) {}
+```
+
+完整可运行示例见 `examples/echo/{http,tcp,udp,all}` 与 `examples/protocol`（SOCKS5 方法协商等私有协议解析：TCP 字节流用 `io.ReadFull` 按"定长头+长度域"分帧，UDP 按 datagram 边界直接 `encoding/binary` 解析）。
+
 ### 内置安全防护
 
 v0.1.3 起默认生效，零配置即获得生产级防护，所有选项可通过配置覆盖（显式负值/`<=0` 关闭）：
@@ -289,9 +369,18 @@ v0.1.3 起默认生效，零配置即获得生产级防护，所有选项可通�
 | 请求头上限 | `maxHeaderBytes` | 1MB |
 | TCP 连接上限 | `maxConns`，超限立即拒绝 | 不限 |
 | TCP 空闲回收 | `connIdleTimeout`，每次收发自动续期 | 不限 |
+| TCP 活跃超时 | `activeTimeout`，超过未发生任何成功的收或发（客户端上行、服务端推送成功均计入）即判定离线并踢除，`TCPSession.LastActive` 可查最近活跃时间 | 60s |
 | UDP 并发上限 | `maxConcurrent`，超限丢弃报文并告警 | 不限 |
 
-完整配置说明见[文档站 · 服务组件](https://jun3372.github.io/weaver/guide/servers)。
+```yaml
+tcp:
+  addr: ":8081"
+  maxConns: 1000
+  connIdleTimeout: 300s
+  activeTimeout: 300s   # 活跃超时,收发双向成功操作均刷新;缺省 60s,负值关闭
+```
+
+完整配置说明见[文档站 · 服务组件](https://jun3372.github.io/weaver/guide/servers)与[文档站 · Listener](https://jun3372.github.io/weaver/guide/listener)。
 
 ## 日志
 
@@ -363,10 +452,13 @@ go test ./examples/http/ -stress -run Stress
 │   ├── hello/       # 最小示例(组件定义与配置)
 │   ├── demo/        # 多组件与两种配置注入方式
 │   ├── http/        # 单进程 HTTP/TCP/UDP 三服务 + 热更新 + 基准/压测
+│   ├── echo/        # Listener 示例:http / tcp / udp 各自独立 + all 三协议同跑
+│   ├── protocol/    # 私有协议解析示例(SOCKS5 方法协商 / 二进制帧)
 │   └── template/    # 手动注册代码生成的项目模板
 ├── internal/        # 内部实现(config / generate / reflection / files)
 ├── runtime/         # codegen 注册表 / logger / version
 ├── weaver.go        # 公共 API:Run / Implements / Ref / WithConfig
+├── listener.go      # Listener 聚合服务组件:自动注入配置与 Handler
 ├── server.go        # 服务组件:HTTPServer / TCPServer / UDPServer
 └── widget.go        # DI 容器:反射实例化、依赖装配、生命周期
 ```

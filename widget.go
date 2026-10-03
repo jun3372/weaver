@@ -156,9 +156,10 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 		return nil, err
 	}
 
-	// WithConfig
-	if w.conf != nil {
-		w.WithConfig(v)
+	// WithConfig:配置注入与 Listener 装配
+	if err := w.WithConfig(v, obj); err != nil {
+		w.deregister(reg.Name)
+		return nil, err
 	}
 
 	// WithRef
@@ -190,26 +191,90 @@ func isConfigManagedType(name string) bool {
 		name == "HTTPServer" || name == "TCPServer" || name == "UDPServer"
 }
 
-func (w *widget) WithConfig(v reflect.Value) {
+// fieldConfTag 读取字段的配置依赖标签(conf/weaver/config)。
+func fieldConfTag(f reflect.StructField) string {
+	for _, tag := range config.Tags() {
+		if key := f.Tag.Get(tag); key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
+// listenerAPI 是 widget 装配与启动 Listener 字段所需的同包接口
+// (方法为 unexported,由 Listener[H] 实现,断言即可获得具体实例化类型)。
+type listenerAPI interface {
+	init(impl any) error
+	enabled() bool
+	arm()
+	protocol() string
+	confType() reflect.Type
+	setConf(v any)
+	serve(ctx context.Context, impl any) error
+}
+
+// listenerAt 从字段地址提取 Listener;
+// 未导出字段的 Value 带 flagRO,须按 WithRef 的方式经 unsafe 指针重建。
+func listenerAt(addr reflect.Value, t reflect.Type, name string) (listenerAPI, error) {
+	p := reflect.NewAt(addr.Type().Elem(), addr.UnsafePointer()).Interface()
+	l, ok := p.(listenerAPI)
+	if !ok {
+		return nil, errors.Errorf("WithConfig: 字段 %s.%s 不是 weaver.Listener", t, name)
+	}
+	return l, nil
+}
+
+// listeners 收集组件内全部 Listener 字段。
+func listeners(impl any) ([]listenerAPI, error) {
+	s := reflect.ValueOf(impl).Elem()
+	t := s.Type()
+
+	var out []listenerAPI
+	for i := 0; i < t.NumField(); i++ {
+		if !strings.HasPrefix(t.Field(i).Type.Name(), "Listener[") {
+			continue
+		}
+		l, err := listenerAt(s.Field(i).Addr(), t, t.Field(i).Name)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, nil
+}
+
+// WithConfig 遍历组件字段完成装配:
+// - Listener 字段:以组件自身 init 出对应服务端,并按 conf tag 注入配置、注册热更新;
+// - WithConfig/服务组件字段:沿用既有 SetConfig 注入链路。
+// conf 为 nil 时仍装配 Listener(跳过配置注入,listener 保持未就绪)。
+func (w *widget) WithConfig(v reflect.Value, impl any) error {
 	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		panic(errors.Errorf("invalid non pointer to struct value: %v", v))
 	}
 
 	s := v.Elem()
 	t := s.Type()
+	seen := map[string]bool{}
+
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+
+		if strings.HasPrefix(f.Type.Name(), "Listener[") {
+			l, err := listenerAt(s.Field(i).Addr(), t, f.Name)
+			if err != nil {
+				return err
+			}
+			if err := w.initListener(l, impl, f, seen); err != nil {
+				return err
+			}
+			continue
+		}
+
 		if !isConfigManagedType(f.Type.Name()) {
 			continue
 		}
 
-		var key string
-		for _, v := range config.Tags() {
-			if key = f.Tag.Get(v); key != "" {
-				break
-			}
-		}
-
+		key := fieldConfTag(f)
 		if key == "" {
 			w.logger("weaver").Info("未找到配置依赖标签", "struct", t, "fieldName", f.Name, "fieldType", f.Type, "tag", f.Tag)
 			continue
@@ -232,9 +297,51 @@ func (w *widget) WithConfig(v reflect.Value) {
 			fc.MethodByName("SetConfig").Call([]reflect.Value{tmp.Elem()})
 		}
 
-		inject()
-		w.WatchConfig(key, inject)
+		if w.conf != nil {
+			inject()
+			w.WatchConfig(key, inject)
+		}
 	}
+	return nil
+}
+
+// initListener 装配单个 Listener 字段:init 服务端、注入配置并注册热更新。
+// seen 用于拒绝同一协议被多个 Listener 字段绑定。
+func (w *widget) initListener(l listenerAPI, impl any, f reflect.StructField, seen map[string]bool) error {
+	if err := l.init(impl); err != nil {
+		return err
+	}
+
+	protocol := l.protocol()
+	if seen[protocol] {
+		return errors.Errorf("WithConfig: 字段 %s 重复绑定 %s 服务,同一协议只能声明一个 Listener", f.Name, protocol)
+	}
+	seen[protocol] = true
+
+	key := fieldConfTag(f)
+	if key == "" {
+		w.logger("weaver").Info("Listener 字段未找到配置标签,跳过配置注入与自动启动",
+			"impl", reflect.TypeOf(impl), "fieldName", f.Name, "tag", f.Tag)
+		return nil
+	}
+	if w.conf == nil {
+		w.logger("weaver").Info("未指定配置文件,Listener 跳过配置注入与自动启动", "fieldName", f.Name, "key", key)
+		return nil
+	}
+
+	inject := func() {
+		tmp := reflect.New(l.confType())
+		if err := w.conf.UnmarshalKey(key, tmp.Interface()); err != nil {
+			w.logger("weaver").Error("解析配置失败", "key", key, "err", err)
+			return
+		}
+		l.setConf(tmp.Elem().Interface())
+		l.arm()
+	}
+
+	inject()
+	w.WatchConfig(key, inject)
+	return nil
 }
 
 func (w *widget) WithRef(impl any, get func(t reflect.Type) (any, error)) error {
@@ -306,9 +413,9 @@ func (w *widget) reloadConfig() {
 	}
 }
 
-// start 并发启动所有组件的 Start 方法。
-// Start 允许长驻阻塞(如监听服务),因此 start 不等待其返回,
-// 但会等待所有 Start 都已启动;Start 同步快速失败时返回该错误,
+// start 并发启动所有组件的 Start 方法与已就绪 Listener 的自动 Serve。
+// Start/Listener 允许长驻阻塞(如监听服务),因此 start 不等待其返回,
+// 但会等待所有启动动作都已发起;同步快速失败时返回该错误,
 // 其余失败或 panic 通过 cancel 上报,由调用方及其 app 监听 ctx 响应。
 func (w *widget) start(ctx context.Context) error {
 	w.mu.Lock()
@@ -333,31 +440,64 @@ func (w *widget) start(ctx context.Context) error {
 	}
 
 	for _, impl := range impls {
-		i, ok := impl.(interface{ Start(_ context.Context) error })
-		if !ok {
+		_, hasStart := impl.(interface{ Start(_ context.Context) error })
+
+		autos := make([]func(context.Context) error, 0, 3)
+		ls, err := listeners(impl)
+		if err != nil {
+			w.log.Error("Component startup failed", "err", err)
+			setErr(err)
+			w.cancel()
+			continue
+		}
+		for _, l := range ls {
+			if !l.enabled() {
+				continue
+			}
+			if hasStart {
+				err := errors.Errorf("组件 %T 同时定义了 Start 与 Listener,只能二选一", impl)
+				w.log.Error("Component startup failed", "err", err)
+				setErr(err)
+				w.cancel()
+				continue
+			}
+			autos = append(autos, func(ctx context.Context) error {
+				return l.serve(ctx, impl)
+			})
+		}
+
+		if !hasStart && len(autos) == 0 {
 			continue
 		}
 
-		launched.Add(1)
-		w.startWG.Add(1)
-		go func() {
-			launched.Done()
-			defer w.startWG.Done()
-			defer func() {
-				if e := recover(); e != nil {
-					err := fmt.Errorf("component panic: %v", e)
-					w.log.Error("Component startup panicked", "err", err)
+		starts := autos
+		if hasStart {
+			i, _ := impl.(interface{ Start(_ context.Context) error })
+			starts = append(starts, i.Start)
+		}
+
+		for _, fn := range starts {
+			launched.Add(1)
+			w.startWG.Add(1)
+			go func() {
+				launched.Done()
+				defer w.startWG.Done()
+				defer func() {
+					if e := recover(); e != nil {
+						err := fmt.Errorf("component panic: %v", e)
+						w.log.Error("Component startup panicked", "err", err)
+						setErr(err)
+						w.cancel()
+					}
+				}()
+
+				if err := fn(ctx); err != nil {
+					w.log.Error("Component startup failed", "err", err)
 					setErr(err)
 					w.cancel()
 				}
 			}()
-
-			if err := i.Start(ctx); err != nil {
-				w.log.Error("Component startup failed", "err", err)
-				setErr(err)
-				w.cancel()
-			}
-		}()
+		}
 	}
 
 	launched.Wait()

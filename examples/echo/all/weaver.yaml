@@ -1,0 +1,9 @@
+http:
+  addr: ":8080"
+  shutdowntimeout: 5s
+tcp:
+  addr: ":8081"
+  shutdowntimeout: 5s
+udp:
+  addr: ":8082"
+  shutdowntimeout: 5s

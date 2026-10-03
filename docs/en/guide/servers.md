@@ -95,6 +95,7 @@ tcp:
   addr: ":8081"
   maxConns: 1000           # max concurrent connections, excess are rejected immediately; <=0 unlimited (default)
   connIdleTimeout: 300s    # idle timeout, renewed on every read/write so active connections are unaffected; <=0 unlimited (default)
+  activeTimeout: 60s       # active timeout, refreshed by successful reads AND writes; expired connections are reaped and trigger OnDisconnect; default 60s, negative disables
 ```
 
 ### UDP Concurrency Limit
@@ -138,5 +139,6 @@ printf 'ping\n' | nc -u localhost 8082   # UDP echo
 
 ## Further Reading
 
+- [Listener: Automatic Config & Handler Injection](/en/guide/listener)
 - [Configuration](/en/guide/config)
 - [Lifecycle Management](/en/guide/lifecycle)
