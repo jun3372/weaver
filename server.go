@@ -1,13 +1,17 @@
 package weaver
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,6 +25,8 @@ const (
 	defaultWriteTimeout      = 30 * time.Second
 	defaultIdleTimeout       = 120 * time.Second
 	defaultMaxHeaderBytes    = 1 << 20
+
+	defaultActiveTimeout = 60 * time.Second
 )
 
 // timeoutOr 解析超时配置:0 取默认,负值返回 0(关闭超时),其余原样返回。
@@ -61,6 +67,10 @@ type TCPOption struct {
 	ShutdownTimeout time.Duration
 	MaxConns        int           // 最大并发连接数,超过后立即关闭新连接;<=0 不限
 	ConnIdleTimeout time.Duration // 连接空闲超时,每次收发自动续期;<=0 不限
+	// ActiveTimeout 连接活跃超时:超过该时长未发生任何成功的收或发
+	// (客户端上行数据、服务端推送成功均计入)即判定离线,由后台清扫主动
+	// 关闭连接(handler 将收到读错误并退出);0 取默认 60s,负值关闭。
+	ActiveTimeout time.Duration
 }
 
 // UDPOption 是 UDPServer 的配置项,通过 conf tag 注入。
@@ -75,6 +85,15 @@ type TCPHandler interface {
 	ServeTCP(ctx context.Context, conn net.Conn)
 }
 
+// TCPSession 是活跃 TCP 连接的快照;Conn 即 handler 收到的同一连接,
+// 可用指针比较定位自身,但外部写入请走 Send(自带连接级写锁)。
+type TCPSession struct {
+	ID         uint64
+	RemoteAddr net.Addr
+	Conn       net.Conn
+	LastActive time.Time // 最近一次成功收/发的时间
+}
+
 // UDPPacket 是一次 UDP 收包。
 type UDPPacket struct {
 	Data []byte
@@ -84,6 +103,30 @@ type UDPPacket struct {
 // UDPPacketHandler 处理单个 UDP 报文;返回非 nil 字节将作为回包发往来源地址。
 type UDPPacketHandler interface {
 	ServeUDP(ctx context.Context, pkt UDPPacket) ([]byte, error)
+}
+
+// TCPOnConnect / TCPOnDisconnect 是可选实现的事件回调:TCP handler(通常为
+// 组件自身)按需实现,框架在连接建立与断开(含 CloseConn 主动断开、活跃超时
+// 踢除)时经类型断言调用;回调不应长时间阻塞,其 panic 被框架隔离。
+type TCPOnConnect interface{ OnConnect(TCPSession) }
+
+type TCPOnDisconnect interface{ OnDisconnect(TCPSession) }
+
+// UDPOnConnect / UDPOnDisconnect 是 UDP 对端的事件回调:对端首包登记时触发
+// OnPeerConnect;对端超过 udpPeerTTL(5 分钟)未活跃时由后台清扫触发
+// OnPeerDisconnect,不依附于后续收包。
+type UDPOnConnect interface{ OnPeerConnect(addr net.Addr) }
+
+type UDPOnDisconnect interface{ OnPeerDisconnect(addr net.Addr) }
+
+// safeEvent 调用事件回调并隔离其 panic,避免影响 accept/读循环。
+func safeEvent(name string, fn func()) {
+	defer func() {
+		if e := recover(); e != nil {
+			slog.Default().Error("服务事件回调 panic", "event", name, "err", e)
+		}
+	}()
+	fn()
 }
 
 // HTTPServer 内嵌于组件,提供声明式 HTTP 服务:配置注入监听地址,Serve 挂载
@@ -186,13 +229,14 @@ func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
 }
 
 // TCPServer 内嵌于组件,提供声明式 TCP 服务:accept 循环、连接管理与优雅关闭
-// 由框架负责,用户只需实现 TCPHandler。
+// 由框架负责,用户只需实现 TCPHandler;支持会话枚举与定点发送(Sessions/Send/CloseConn)。
 type TCPServer struct {
 	mu     sync.RWMutex
 	config TCPOption
 
 	ln     net.Listener
-	conns  map[net.Conn]struct{}
+	nextID uint64
+	conns  map[uint64]*tcpConn
 	served bool
 }
 
@@ -233,7 +277,7 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 		return errors.New("tcp server: Serve 被重复调用")
 	}
 	s.served = true
-	s.conns = make(map[net.Conn]struct{})
+	s.conns = make(map[uint64]*tcpConn)
 	s.mu.Unlock()
 	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
 	defer func() {
@@ -253,18 +297,27 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 	s.mu.Unlock()
 	slog.Default().Info("tcp server listening", "addr", ln.Addr().String())
 
+	// 事件回调:handler 按需实现 OnConnect/OnDisconnect,未实现则跳过
+	onConnect, _ := h.(TCPOnConnect)
+	onDisconnect, _ := h.(TCPOnDisconnect)
+
 	var wg sync.WaitGroup
 	go func() {
 		<-ctx.Done()
 		_ = ln.Close()
 	}()
 
+	// 活跃超时清扫:定期关闭未在窗口内收到客户端数据的连接(判定离线)
+	if active := timeoutOr(opt.ActiveTimeout, defaultActiveTimeout); active > 0 {
+		go s.reapIdle(ctx, active)
+	}
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			select {
 			case <-ctx.Done():
-				s.waitConns(&wg, s.conns, opt.ShutdownTimeout)
+				s.waitConns(&wg, opt.ShutdownTimeout)
 				slog.Default().Info("tcp server shutdown", "addr", ln.Addr().String())
 				return nil
 			default:
@@ -273,22 +326,30 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 			return fmt.Errorf("tcp server: accept: %w", err)
 		}
 
-		// 先包装再登记,保证 map 中的 key 与 goroutine 退出时 delete 的一致
-		if opt.ConnIdleTimeout > 0 {
-			conn = &idleConn{Conn: conn, idle: opt.ConnIdleTimeout}
-		}
-
+		// 会话登记:分配递增 ID,写锁包装保证 handler 与外部 Send 并发写安全
 		s.mu.Lock()
-		full := opt.MaxConns > 0 && len(s.conns) >= opt.MaxConns
-		if full {
+		s.nextID++
+		tc := &tcpConn{Conn: conn, id: s.nextID, idle: opt.ConnIdleTimeout}
+		if full := opt.MaxConns > 0 && len(s.conns) >= opt.MaxConns; full {
 			s.mu.Unlock()
 			slog.Default().Warn("tcp server 连接数已达上限,拒绝新连接",
 				"max", opt.MaxConns, "remote", conn.RemoteAddr().String())
 			_ = conn.Close()
 			continue
 		}
-		s.conns[conn] = struct{}{}
+		s.conns[tc.id] = tc
 		s.mu.Unlock()
+		tc.touch()
+
+		sess := TCPSession{
+			ID:         tc.id,
+			RemoteAddr: conn.RemoteAddr(),
+			Conn:       tc,
+			LastActive: time.Unix(0, tc.lastActive.Load()),
+		}
+		if onConnect != nil {
+			safeEvent("OnConnect", func() { onConnect.OnConnect(sess) })
+		}
 
 		wg.Add(1)
 		go func() {
@@ -302,38 +363,136 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 			defer func() {
 				_ = conn.Close()
 				s.mu.Lock()
-				delete(s.conns, conn)
+				delete(s.conns, tc.id)
 				s.mu.Unlock()
+				if onDisconnect != nil {
+					disconnected := sess
+					disconnected.LastActive = time.Unix(0, tc.lastActive.Load())
+					safeEvent("OnDisconnect", func() { onDisconnect.OnDisconnect(disconnected) })
+				}
 			}()
-			h.ServeTCP(ctx, conn)
+			h.ServeTCP(ctx, tc)
 		}()
 	}
 }
 
-// idleConn 包装 net.Conn:每次读写前重置绝对 deadline,实现空闲超时;
-// 活跃连接的 deadline 自动续期,长驻协议不受影响。
-type idleConn struct {
+// tcpConn 包装 net.Conn:连接级写锁保证 handler 与 Send 并发写安全;
+// lastActive 由收/发两个方向成功后刷新(任一方向成功即视为连接活跃),
+// 供活跃超时清扫判定离线;每次读写前重置绝对 deadline,实现空闲超时。
+type tcpConn struct {
 	net.Conn
-	idle time.Duration
+	id         uint64
+	wmu        sync.Mutex
+	idle       time.Duration
+	lastActive atomic.Int64 // UnixNano
 }
 
-func (c *idleConn) Read(p []byte) (int, error) {
-	_ = c.SetReadDeadline(time.Now().Add(c.idle))
-	return c.Conn.Read(p)
+func (c *tcpConn) touch() { c.lastActive.Store(time.Now().UnixNano()) }
+
+func (c *tcpConn) Read(p []byte) (int, error) {
+	if c.idle > 0 {
+		_ = c.SetReadDeadline(time.Now().Add(c.idle))
+	}
+	n, err := c.Conn.Read(p)
+	if n > 0 {
+		c.touch()
+	}
+	return n, err
 }
 
-func (c *idleConn) Write(p []byte) (int, error) {
-	_ = c.SetWriteDeadline(time.Now().Add(c.idle))
-	return c.Conn.Write(p)
+func (c *tcpConn) Write(p []byte) (int, error) {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	if c.idle > 0 {
+		_ = c.SetWriteDeadline(time.Now().Add(c.idle))
+	}
+	n, err := c.Conn.Write(p)
+	if n > 0 {
+		c.touch()
+	}
+	return n, err
+}
+
+// reapIdle 定期关闭活跃超时的连接;handler 将因读错误退出并自行注销会话。
+func (s *TCPServer) reapIdle(ctx context.Context, active time.Duration) {
+	interval := active / 4
+	if interval < 100*time.Millisecond {
+		interval = 100 * time.Millisecond
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			deadline := time.Now().Add(-active)
+			s.mu.RLock()
+			var stale []*tcpConn
+			for _, c := range s.conns {
+				if time.Unix(0, c.lastActive.Load()).Before(deadline) {
+					stale = append(stale, c)
+				}
+			}
+			s.mu.RUnlock()
+
+			for _, c := range stale {
+				slog.Default().Warn("tcp server 连接活跃超时,判定离线并踢除",
+					"id", c.id, "remote", c.RemoteAddr().String(), "timeout", active)
+				_ = c.Close()
+			}
+		}
+	}
+}
+
+// Sessions 返回活跃会话快照,按 ID 升序。
+func (s *TCPServer) Sessions() []TCPSession {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]TCPSession, 0, len(s.conns))
+	for _, c := range s.conns {
+		out = append(out, TCPSession{
+			ID:         c.id,
+			RemoteAddr: c.RemoteAddr(),
+			Conn:       c,
+			LastActive: time.Unix(0, c.lastActive.Load()),
+		})
+	}
+	slices.SortFunc(out, func(a, b TCPSession) int { return cmp.Compare(a.ID, b.ID) })
+	return out
+}
+
+// Send 向指定会话写入数据;连接级写锁保证与 handler 的写入互斥。
+func (s *TCPServer) Send(id uint64, data []byte) error {
+	s.mu.RLock()
+	c := s.conns[id]
+	s.mu.RUnlock()
+	if c == nil {
+		return fmt.Errorf("tcp server: 会话 %d 不存在", id)
+	}
+	_, err := c.Write(data)
+	return err
+}
+
+// CloseConn 主动断开指定会话;handler 将收到读取错误并退出。
+func (s *TCPServer) CloseConn(id uint64) error {
+	s.mu.RLock()
+	c := s.conns[id]
+	s.mu.RUnlock()
+	if c == nil {
+		return fmt.Errorf("tcp server: 会话 %d 不存在", id)
+	}
+	return c.Close()
 }
 
 // waitConns 关闭全部活跃连接以解除 handler 阻塞,并限时等待其退出。
-func (s *TCPServer) waitConns(wg *sync.WaitGroup, conns map[net.Conn]struct{}, timeout time.Duration) {
-	s.mu.Lock()
-	for conn := range conns {
-		_ = conn.Close()
+func (s *TCPServer) waitConns(wg *sync.WaitGroup, timeout time.Duration) {
+	s.mu.RLock()
+	for _, c := range s.conns {
+		_ = c.Close()
 	}
-	s.mu.Unlock()
+	s.mu.RUnlock()
 
 	if timeout <= 0 {
 		timeout = defaultShutdownTimeout
@@ -351,13 +510,111 @@ func (s *TCPServer) waitConns(wg *sync.WaitGroup, conns map[net.Conn]struct{}, t
 }
 
 // UDPServer 内嵌于组件,提供声明式 UDP 服务:读循环、派发与回包由框架负责,
-// 用户只需实现 UDPPacketHandler。
+// 用户只需实现 UDPPacketHandler;支持对端表与定点发送(Peers/SendTo)。
 type UDPServer struct {
 	mu     sync.RWMutex
 	config UDPOption
 
 	conn   net.PacketConn
+	peers  map[string]*udpPeer
 	served bool
+}
+
+// udpPeerTTL 内未再收包的对端在下次收包时被惰性清理。
+var udpPeerTTL = 5 * time.Minute
+
+type udpPeer struct {
+	addr     net.Addr
+	lastSeen time.Time
+}
+
+// UDPPeer 是活跃 UDP 对端的快照。
+type UDPPeer struct {
+	Addr     net.Addr
+	LastSeen time.Time
+}
+
+// recordPeer 登记对端并刷新活跃时间;若该对端自身已超 TTL(清扫尚未跑到),
+// 先判定离线再作为新对端登记,保证离线/上线事件成对触发。
+// 仅做 O(1) 的单键检查,全表清理由 reapIdlePeers 负责。
+func (s *UDPServer) recordPeer(addr net.Addr) (added bool, pruned []net.Addr) {
+	now := time.Now()
+	key := addr.String()
+
+	s.mu.Lock()
+	p, ok := s.peers[key]
+	if ok && now.Sub(p.lastSeen) > udpPeerTTL {
+		delete(s.peers, key)
+		pruned = append(pruned, p.addr)
+		ok = false
+	}
+	if !ok {
+		added = true
+	}
+	s.peers[key] = &udpPeer{addr: addr, lastSeen: now}
+	s.mu.Unlock()
+	return added, pruned
+}
+
+// reapIdlePeers 定期清理超过 udpPeerTTL 未活跃的静默对端并触发离线事件。
+func (s *UDPServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconnect) {
+	interval := udpPeerTTL / 4
+	if interval < 100*time.Millisecond {
+		interval = 100 * time.Millisecond
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			for _, pa := range s.prunePeers(time.Now()) {
+				if onDisconnect != nil {
+					safeEvent("OnPeerDisconnect", func() { onDisconnect.OnPeerDisconnect(pa) })
+				}
+			}
+		}
+	}
+}
+
+// prunePeers 清理超过 udpPeerTTL 未活跃的对端,返回被清理的对端列表。
+func (s *UDPServer) prunePeers(now time.Time) []net.Addr {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var pruned []net.Addr
+	for k, p := range s.peers {
+		if now.Sub(p.lastSeen) > udpPeerTTL {
+			pruned = append(pruned, p.addr)
+			delete(s.peers, k)
+		}
+	}
+	return pruned
+}
+
+// Peers 返回最近活跃的对端快照,按地址字符串升序。
+func (s *UDPServer) Peers() []UDPPeer {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]UDPPeer, 0, len(s.peers))
+	for _, p := range s.peers {
+		out = append(out, UDPPeer{Addr: p.addr, LastSeen: p.lastSeen})
+	}
+	slices.SortFunc(out, func(a, b UDPPeer) int { return strings.Compare(a.Addr.String(), b.Addr.String()) })
+	return out
+}
+
+// SendTo 向指定对端发送报文;可在 handler 外主动推送。
+func (s *UDPServer) SendTo(addr net.Addr, data []byte) error {
+	s.mu.RLock()
+	conn := s.conn
+	s.mu.RUnlock()
+	if conn == nil {
+		return errors.New("udp server: 未在服务中,无法发送")
+	}
+	_, err := conn.WriteTo(data, addr)
+	return err
 }
 
 func (s *UDPServer) Config() UDPOption {
@@ -397,11 +654,13 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 		return errors.New("udp server: Serve 被重复调用")
 	}
 	s.served = true
+	s.peers = make(map[string]*udpPeer)
 	s.mu.Unlock()
 	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
 	defer func() {
 		s.mu.Lock()
 		s.conn = nil
+		s.peers = nil
 		s.served = false
 		s.mu.Unlock()
 	}()
@@ -414,6 +673,14 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 	s.conn = conn
 	s.mu.Unlock()
 	slog.Default().Info("udp server listening", "addr", conn.LocalAddr().String())
+
+	// 事件回调:handler 按需实现 OnPeerConnect/OnPeerDisconnect,未实现则跳过
+	onConnect, _ := h.(UDPOnConnect)
+	onDisconnect, _ := h.(UDPOnDisconnect)
+
+	// 静默对端清扫:定期清理超 TTL 未活跃的对端并触发离线事件,
+	// 使完全静默的对端也能被感知,不依附于后续收包
+	go s.reapIdlePeers(ctx, onDisconnect)
 
 	go func() {
 		<-ctx.Done()
@@ -448,6 +715,16 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 					"max", opt.MaxConcurrent, "remote", addr.String())
 				continue
 			}
+		}
+
+		added, pruned := s.recordPeer(addr)
+		for _, pa := range pruned {
+			if onDisconnect != nil {
+				safeEvent("OnPeerDisconnect", func() { onDisconnect.OnPeerDisconnect(pa) })
+			}
+		}
+		if added && onConnect != nil {
+			safeEvent("OnPeerConnect", func() { onConnect.OnPeerConnect(addr) })
 		}
 
 		pkt := UDPPacket{Data: append([]byte(nil), buf[:n]...), Addr: addr}

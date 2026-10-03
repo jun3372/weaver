@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func waitAddr(t *testing.T, get func() string) string {
+func waitAddr(t testing.TB, get func() string) string {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
