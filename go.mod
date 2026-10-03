@@ -1,6 +1,6 @@
 module github.com/jun3372/weaver
 
-go 1.27.0
+go 1.27
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1
