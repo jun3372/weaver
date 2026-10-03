@@ -19,7 +19,9 @@ var InitializationCmd = &cobra.Command{
 	Short: "初始化一个完整可运行的 Weaver 项目",
 	Long: `初始化一个完整可运行的 Weaver 项目。
 
-生成 main.go(Main 组件)、greet/ 示例组件、weaver.yaml 配置,
+生成 cmd/main.go(Main 组件)、internal/app/http.go(HTTP 服务组件,
+基于 Listener 自动注入配置与 handler)、etc/weaver.yaml 配置,
+以及 Makefile、cmd/Dockerfile 与 deploy/(docker-compose、k8s 编排),
 并自动执行 go mod 与代码生成。目标目录非空时需 --force。
 
 用法:
@@ -65,9 +67,13 @@ func runInit(dir string, cmd *cobra.Command) error {
 
 	project := project{Name: filepath.Base(abs), Module: module}
 	files := map[string]*template.Template{
-		"main.go":                          mainTmpl,
-		"weaver.yaml":                      configTmpl,
-		filepath.Join("greet", "greet.go"): greetTmpl,
+		"cmd/main.go":     mainTmpl,
+		"etc/weaver.yaml": configTmpl,
+		filepath.Join("internal", "app", "http.go"): appTmpl,
+		"Makefile":                   makefileTmpl,
+		"cmd/Dockerfile":             dockerfileTmpl,
+		"deploy/docker-compose.yaml": composeTmpl,
+		"deploy/k8s.yaml":            k8sTmpl,
 	}
 	for name, tmpl := range files {
 		path := filepath.Join(abs, name)
@@ -94,7 +100,7 @@ func runInit(dir string, cmd *cobra.Command) error {
 		fmt.Println("代码生成完成")
 	}
 
-	fmt.Printf("\n项目初始化完成:\n  cd %s && go run . -conf weaver.yaml\n", abs)
+	fmt.Printf("\n项目初始化完成:\n  cd %s && go run ./cmd -conf etc/weaver.yaml\n", abs)
 	return nil
 }
 

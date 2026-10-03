@@ -23,14 +23,18 @@ weaver version
 ```bash
 weaver init myapp --module example.com/myapp
 cd myapp
-go run . -conf weaver.yaml
+go run ./cmd -conf etc/weaver.yaml
+curl localhost:8080   # Hello, Weaver!
 ```
 
 生成内容:
 
-- `main.go`:Main 组件(依赖注入示例组件、读取配置)
-- `greet/`:示例组件,演示 `weaver.Implements` / `WithConfig` / 生命周期钩子
-- `weaver.yaml`:配置文件(app / 组件 / weaver 系统日志)
+- `cmd/main.go`:Main 组件(声明依赖与配置,由 `weaver.Run` 装配启动)
+- `internal/app/http.go`:HTTP 服务组件,演示 `weaver.Listener[H]` + `Handler()` 接入(含 gin 注释示例),无需编写 `Start`
+- `etc/weaver.yaml`:配置文件(app / http 服务 / weaver 系统日志)
+- `Makefile`:run / build / generate / test / docker-build / compose-up / k8s-apply 等常用目标
+- `cmd/Dockerfile`:多阶段构建(与 main.go 同目录,golang 构建器 + alpine 运行时,`make docker-build`)
+- `deploy/docker-compose.yaml` 与 `deploy/k8s.yaml`:开箱即用的编排部署文件(Deployment + Service,含健康探针)
 - 自动执行 `go mod init`、`go get github.com/jun3372/weaver@latest` 与 `weaver generate`(覆盖全部子包)
 
 目录非空时会拒绝执行,加 `--force` 覆盖;`--module` 缺省取目录名。

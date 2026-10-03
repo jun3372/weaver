@@ -2,6 +2,7 @@ package weaver
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"reflect"
@@ -181,6 +182,20 @@ func (l *Listener[H]) protocol() string {
 	return ""
 }
 
+// setLog 将组件 logger 透传给内部服务端,由 widget 在装配阶段调用。
+func (l *Listener[H]) setLog(log *slog.Logger) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	switch s := l.server.(type) {
+	case *HTTPServer:
+		s.setLog(log)
+	case *TCPServer:
+		s.setLog(log)
+	case *UDPServer:
+		s.setLog(log)
+	}
+}
+
 // serve 以注册的外部 handler(优先)或组件自身为 handler 长驻启动内部
 // 服务端;ctx 结束后优雅关闭。
 func (l *Listener[H]) serve(ctx context.Context, impl any) error {
@@ -203,6 +218,24 @@ func (l *Listener[H]) serve(ctx context.Context, impl any) error {
 		return s.Serve(ctx, impl.(UDPPacketHandler))
 	}
 	return errors.New("listener: 服务端未初始化")
+}
+
+// Config 返回注入的服务端配置快照,类型为 HTTPOption/TCPOption/UDPOption 之一
+// (与绑定协议对应),经类型断言取用;服务端未初始化(未启用)时返回 nil。
+// 配置热更新后返回最新值。
+func (l *Listener[H]) Config() any {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	switch s := l.server.(type) {
+	case *HTTPServer:
+		return s.Config()
+	case *TCPServer:
+		return s.Config()
+	case *UDPServer:
+		return s.Config()
+	}
+	return nil
 }
 
 // Addr 返回绑定后的实际监听地址,未初始化或未在服务中时返回 ""。

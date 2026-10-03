@@ -136,7 +136,7 @@ go run . -conf weaver.yaml
 也可以用脚手架一键创建完整项目：
 
 ```bash
-weaver init myapp && cd myapp && go run . -conf weaver.yaml
+weaver init myapp && cd myapp && go run ./cmd -conf etc/weaver.yaml
 ```
 
 ## 组件系统
@@ -332,6 +332,12 @@ func (g *gateway) Init(ctx context.Context) error {
 }
 ```
 
+注入的服务配置可通过 `Config()` 读取（返回与绑定协议对应的 `HTTPOption`/`TCPOption`/`UDPOption`，热更新后返回最新值）：
+
+```go
+opt := i.Config().(weaver.TCPOption) // Addr / ActiveTimeout / MaxConns / ...
+```
+
 TCP/UDP 还内置连接管理与定点发送，可在 handler 外主动推送：
 
 ```go
@@ -412,7 +418,7 @@ return i.HTTPServer.Serve(ctx, handler) // 与服务组件直接组合
 ## 命令行工具
 
 ```bash
-weaver init [dir]              # 初始化完整可运行项目(main + 示例组件 + 配置 + 自动生成)
+weaver init [dir]              # 初始化完整可运行项目(cmd/main + internal/app HTTP 组件 + etc/ 配置 + Makefile/cmd/Dockerfile/deploy 编排 + 自动生成)
 weaver make <pkgdir> <Iface>   # 为组件接口生成实现结构体骨架
 weaver generate [packages]     # 生成组件注册代码 weaver_gen.go(接口变更后必须重新执行)
 weaver version                 # 版本信息(自动回退:ldflags → 模块版本 → VCS 戳记)

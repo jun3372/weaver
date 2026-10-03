@@ -4,7 +4,7 @@ Weaver is a lightweight Go application framework focused on a simple, flexible a
 
 ## Installation
 
-Make sure your Go version is >= 1.22, then run:
+Make sure your Go version is >= 1.27, then run:
 
 ```bash
 go get github.com/jun3372/weaver

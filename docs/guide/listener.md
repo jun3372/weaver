@@ -133,6 +133,13 @@ tcp:
 
 Listener 的配置项与对应服务组件完全一致(`HTTPOption` / `TCPOption` / `UDPOption`,含[安全防护](/guide/servers#安全配置)各选项),`conf` 标签挂在 Listener 字段上注入;业务配置可内嵌 `WithConfig` 共用同一 key。配置文件变更时自动重新注入,但 `addr` 在启动时读取,修改监听地址仍需重启。
 
+组件内可通过 `Config()` 读取注入的服务配置（热更新后返回最新值），返回值类型与绑定协议对应，经类型断言取用：
+
+```go
+opt := i.Config().(weaver.TCPOption) // Addr / ActiveTimeout / MaxConns / ...
+i.Logger(ctx).Info("tcp 配置", "addr", opt.Addr, "activeTimeout", opt.ActiveTimeout)
+```
+
 ## 私有协议解析
 
 TCP handler 收到的是字节流,私有协议需自行分帧;UDP 按 datagram 边界天然成帧。`examples/protocol` 演示了 SOCKS5 方法协商等典型写法:TCP 用 `io.ReadFull` 按"定长头 + 长度域"分帧,UDP 直接 `encoding/binary` 解析二进制帧。

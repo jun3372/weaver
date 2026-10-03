@@ -23,14 +23,18 @@ If you prefer not to install, `go run` works as a one-off alternative (every `we
 ```bash
 weaver init myapp --module example.com/myapp
 cd myapp
-go run . -conf weaver.yaml
+go run ./cmd -conf etc/weaver.yaml
+curl localhost:8080   # Hello, Weaver!
 ```
 
 What you get:
 
-- `main.go`: the Main component (injects the example component, reads config)
-- `greet/`: an example component demonstrating `weaver.Implements` / `WithConfig` / lifecycle hooks
-- `weaver.yaml`: config file (app / component / weaver logger)
+- `cmd/main.go`: the Main component (declares dependencies and config, assembled and started by `weaver.Run`)
+- `internal/app/http.go`: an HTTP server component demonstrating `weaver.Listener[H]` + `Handler()` wiring (with a commented gin example) — no `Start` needed
+- `etc/weaver.yaml`: config file (app / http server / weaver logger)
+- `Makefile`: common targets — run / build / generate / test / docker-build / compose-up / k8s-apply
+- `cmd/Dockerfile`: multi-stage build (next to main.go; golang builder + alpine runtime, `make docker-build`)
+- `deploy/docker-compose.yaml` and `deploy/k8s.yaml`: ready-to-use orchestration files (Deployment + Service with health probes)
 - Automatically runs `go mod init`, `go get github.com/jun3372/weaver@latest` and `weaver generate` (covering all subpackages)
 
 Non-empty directories are rejected unless `--force` is given; `--module` defaults to the directory name.
