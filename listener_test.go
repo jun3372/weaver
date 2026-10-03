@@ -3,6 +3,7 @@ package weaver
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -855,6 +856,81 @@ func TestListenerWrongProtocolManagement(t *testing.T) {
 	}
 	if err := comp.SendTo(nil, []byte("x")); err == nil || !strings.Contains(err.Error(), "udp") {
 		t.Fatalf("tcp 绑定的 listener 调 SendTo 应报 udp 错误,得到 %v", err)
+	}
+
+	cancel()
+	w.shutdown(context.Background())
+}
+
+// ---- logger 注入 ----
+
+// directSrvComp 直接内嵌服务组件字段(非 Listener)。
+type directSrvComp struct {
+	Implements[listenerIntf]
+	Srv HTTPServer `conf:"listener"`
+}
+
+func TestServerComponentsUseInjectedLogger(t *testing.T) {
+	_, cancel, w := newListenerWidget(t, "listener:\n  addr: \"127.0.0.1:0\"\n",
+		listenerReg(t, &httpEchoComp{}), listenerReg(t, &directSrvComp{}))
+
+	readLog := func(srv *HTTPServer) *slog.Logger {
+		t.Helper()
+		f := reflect.ValueOf(srv).Elem().FieldByName("log")
+		return reflect.NewAt(f.Type(), f.Addr().UnsafePointer()).Elem().Interface().(*slog.Logger)
+	}
+
+	c, err := w.getImpl(reflect.TypeFor[httpEchoComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	lf := reflect.ValueOf(c).Elem().FieldByName("Listener")
+	lsrv := reflect.NewAt(lf.Type(), lf.Addr().UnsafePointer()).Elem().FieldByName("server")
+	inner := reflect.NewAt(lsrv.Type(), lsrv.Addr().UnsafePointer()).Elem().Interface().(*HTTPServer)
+	if got := readLog(inner); got != w.log {
+		t.Fatal("Listener 内部服务端未注入框架 logger")
+	}
+
+	c2, err := w.getImpl(reflect.TypeFor[directSrvComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	f2 := reflect.ValueOf(c2).Elem().FieldByName("Srv")
+	srv := reflect.NewAt(f2.Type(), f2.Addr().UnsafePointer()).Interface().(*HTTPServer)
+	if got := readLog(srv); got != w.log {
+		t.Fatal("服务组件字段未注入框架 logger")
+	}
+
+	cancel()
+	w.shutdown(context.Background())
+}
+
+func TestListenerConfig(t *testing.T) {
+	_, cancel, w := newListenerWidget(t, "listener:\n  addr: \"127.0.0.1:18742\"\n  activetimeout: 90s\n",
+		listenerReg(t, &httpEchoComp{}), listenerReg(t, &tcpSessComp{}))
+
+	c, err := w.getImpl(reflect.TypeFor[httpEchoComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	opt, ok := c.(*httpEchoComp).Listener.Config().(HTTPOption)
+	if !ok {
+		t.Fatal("http 绑定的 Config 应返回 HTTPOption")
+	}
+	if opt.Addr != "127.0.0.1:18742" {
+		t.Fatalf("配置注入值 = %q, want 127.0.0.1:18742", opt.Addr)
+	}
+
+	c2, err := w.getImpl(reflect.TypeFor[tcpSessComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	topt, ok := c2.(*tcpSessComp).Listener.Config().(TCPOption)
+	if !ok {
+		t.Fatal("tcp 绑定的 Config 应返回 TCPOption")
+	}
+	if topt.ActiveTimeout != 90*time.Second {
+		t.Fatalf("ActiveTimeout = %v, want 90s", topt.ActiveTimeout)
 	}
 
 	cancel()
