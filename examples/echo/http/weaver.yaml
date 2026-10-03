@@ -1,0 +1,8 @@
+listener:
+  addr: ":8080"
+  shutdowntimeout: 5s
+  readtimeout: 30s
+  readheadertimeout: 10s
+  writetimeout: 30s
+  idletimeout: 120s
+  greeting: "hello, weaver listener"

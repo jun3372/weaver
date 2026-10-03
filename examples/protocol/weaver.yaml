@@ -1,0 +1,6 @@
+tcp:
+  addr: ":8083"
+  shutdowntimeout: 5s
+udp:
+  addr: ":8084"
+  shutdowntimeout: 5s
