@@ -151,13 +151,14 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 	}
 
 	// Set logger.
-	if err := w.setLogger(obj, w.logger(reg.Name)); err != nil {
+	componentLog := w.logger(reg.Name)
+	if err := w.setLogger(obj, componentLog); err != nil {
 		w.deregister(reg.Name)
 		return nil, err
 	}
 
 	// WithConfig:配置注入与 Listener 装配
-	if err := w.WithConfig(v, obj); err != nil {
+	if err := w.WithConfig(v, obj, componentLog); err != nil {
 		w.deregister(reg.Name)
 		return nil, err
 	}
@@ -210,6 +211,7 @@ type listenerAPI interface {
 	protocol() string
 	confType() reflect.Type
 	setConf(v any)
+	setLog(log *slog.Logger)
 	serve(ctx context.Context, impl any) error
 }
 
@@ -245,9 +247,10 @@ func listeners(impl any) ([]listenerAPI, error) {
 
 // WithConfig 遍历组件字段完成装配:
 // - Listener 字段:以组件自身 init 出对应服务端,并按 conf tag 注入配置、注册热更新;
-// - WithConfig/服务组件字段:沿用既有 SetConfig 注入链路。
+// - WithConfig/服务组件字段:沿用既有 SetConfig 注入链路;
+// - 服务组件与 Listener 字段同步注入组件 logger,框架内部日志统一走已初始化的 logger。
 // conf 为 nil 时仍装配 Listener(跳过配置注入,listener 保持未就绪)。
-func (w *widget) WithConfig(v reflect.Value, impl any) error {
+func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		panic(errors.Errorf("invalid non pointer to struct value: %v", v))
 	}
@@ -264,7 +267,7 @@ func (w *widget) WithConfig(v reflect.Value, impl any) error {
 			if err != nil {
 				return err
 			}
-			if err := w.initListener(l, impl, f, seen); err != nil {
+			if err := w.initListener(l, impl, f, seen, log); err != nil {
 				return err
 			}
 			continue
@@ -272,6 +275,12 @@ func (w *widget) WithConfig(v reflect.Value, impl any) error {
 
 		if !isConfigManagedType(f.Type.Name()) {
 			continue
+		}
+
+		// 服务组件字段注入组件 logger(WithConfig[T] 无 setLog,断言失败即跳过)
+		fp := reflect.NewAt(f.Type, s.Field(i).Addr().UnsafePointer()).Interface()
+		if sv, ok := fp.(interface{ setLog(_ *slog.Logger) }); ok {
+			sv.setLog(log)
 		}
 
 		key := fieldConfTag(f)
@@ -305,12 +314,13 @@ func (w *widget) WithConfig(v reflect.Value, impl any) error {
 	return nil
 }
 
-// initListener 装配单个 Listener 字段:init 服务端、注入配置并注册热更新。
-// seen 用于拒绝同一协议被多个 Listener 字段绑定。
-func (w *widget) initListener(l listenerAPI, impl any, f reflect.StructField, seen map[string]bool) error {
+// initListener 装配单个 Listener 字段:init 服务端、注入组件 logger、
+// 注入配置并注册热更新。seen 用于拒绝同一协议被多个 Listener 字段绑定。
+func (w *widget) initListener(l listenerAPI, impl any, f reflect.StructField, seen map[string]bool, log *slog.Logger) error {
 	if err := l.init(impl); err != nil {
 		return err
 	}
+	l.setLog(log)
 
 	protocol := l.protocol()
 	if seen[protocol] {

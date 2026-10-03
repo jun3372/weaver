@@ -120,13 +120,22 @@ type UDPOnConnect interface{ OnPeerConnect(addr net.Addr) }
 type UDPOnDisconnect interface{ OnPeerDisconnect(addr net.Addr) }
 
 // safeEvent 调用事件回调并隔离其 panic,避免影响 accept/读循环。
-func safeEvent(name string, fn func()) {
+func safeEvent(log *slog.Logger, name string, fn func()) {
 	defer func() {
 		if e := recover(); e != nil {
-			slog.Default().Error("服务事件回调 panic", "event", name, "err", e)
+			log.Error("服务事件回调 panic", "event", name, "err", e)
 		}
 	}()
 	fn()
+}
+
+// serverLog 返回注入的组件 logger;未注入(直接构造服务端、未走 widget 装配)时
+// 回退 slog.Default()。
+func serverLog(l *slog.Logger) *slog.Logger {
+	if l != nil {
+		return l
+	}
+	return slog.Default()
 }
 
 // HTTPServer 内嵌于组件,提供声明式 HTTP 服务:配置注入监听地址,Serve 挂载
@@ -134,10 +143,14 @@ func safeEvent(name string, fn func()) {
 type HTTPServer struct {
 	mu     sync.RWMutex
 	config HTTPOption
+	log    *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
 
 	srv *http.Server
 	ln  net.Listener
 }
+
+// setLog 注入框架初始化的组件 logger,由 widget 在装配阶段调用。
+func (s *HTTPServer) setLog(log *slog.Logger) { s.log = log }
 
 func (s *HTTPServer) Config() HTTPOption {
 	s.mu.RLock()
@@ -205,14 +218,15 @@ func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
 		timeout = defaultShutdownTimeout
 	}
 
+	log := serverLog(s.log)
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.srv.Serve(ln) }()
-	slog.Default().Info("http server listening", "addr", ln.Addr().String())
+	log.Info("http server listening", "addr", ln.Addr().String())
 
 	select {
 	case err := <-errCh:
 		if !errors.Is(err, http.ErrServerClosed) {
-			slog.Default().Error("http server exited", "err", err)
+			log.Error("http server exited", "err", err)
 			return err
 		}
 	case <-ctx.Done():
@@ -221,10 +235,10 @@ func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := s.srv.Shutdown(shutdownCtx); err != nil {
-		slog.Default().Error("http server shutdown failed", "err", err)
+		log.Error("http server shutdown failed", "err", err)
 		return err
 	}
-	slog.Default().Info("http server shutdown", "addr", opt.Addr)
+	log.Info("http server shutdown", "addr", opt.Addr)
 	return nil
 }
 
@@ -233,12 +247,16 @@ func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
 type TCPServer struct {
 	mu     sync.RWMutex
 	config TCPOption
+	log    *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
 
 	ln     net.Listener
 	nextID uint64
 	conns  map[uint64]*tcpConn
 	served bool
 }
+
+// setLog 注入框架初始化的组件 logger,由 widget 在装配阶段调用。
+func (s *TCPServer) setLog(log *slog.Logger) { s.log = log }
 
 func (s *TCPServer) Config() TCPOption {
 	s.mu.RLock()
@@ -295,7 +313,8 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 	s.mu.Lock()
 	s.ln = ln
 	s.mu.Unlock()
-	slog.Default().Info("tcp server listening", "addr", ln.Addr().String())
+	log := serverLog(s.log)
+	log.Info("tcp server listening", "addr", ln.Addr().String())
 
 	// 事件回调:handler 按需实现 OnConnect/OnDisconnect,未实现则跳过
 	onConnect, _ := h.(TCPOnConnect)
@@ -309,7 +328,7 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 
 	// 活跃超时清扫:定期关闭未在窗口内收到客户端数据的连接(判定离线)
 	if active := timeoutOr(opt.ActiveTimeout, defaultActiveTimeout); active > 0 {
-		go s.reapIdle(ctx, active)
+		go s.reapIdle(ctx, active, log)
 	}
 
 	for {
@@ -317,12 +336,12 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 		if err != nil {
 			select {
 			case <-ctx.Done():
-				s.waitConns(&wg, opt.ShutdownTimeout)
-				slog.Default().Info("tcp server shutdown", "addr", ln.Addr().String())
+				s.waitConns(&wg, opt.ShutdownTimeout, log)
+				log.Info("tcp server shutdown", "addr", ln.Addr().String())
 				return nil
 			default:
 			}
-			slog.Default().Error("tcp server accept failed", "err", err)
+			log.Error("tcp server accept failed", "err", err)
 			return fmt.Errorf("tcp server: accept: %w", err)
 		}
 
@@ -332,7 +351,7 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 		tc := &tcpConn{Conn: conn, id: s.nextID, idle: opt.ConnIdleTimeout}
 		if full := opt.MaxConns > 0 && len(s.conns) >= opt.MaxConns; full {
 			s.mu.Unlock()
-			slog.Default().Warn("tcp server 连接数已达上限,拒绝新连接",
+			log.Warn("tcp server 连接数已达上限,拒绝新连接",
 				"max", opt.MaxConns, "remote", conn.RemoteAddr().String())
 			_ = conn.Close()
 			continue
@@ -348,7 +367,7 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 			LastActive: time.Unix(0, tc.lastActive.Load()),
 		}
 		if onConnect != nil {
-			safeEvent("OnConnect", func() { onConnect.OnConnect(sess) })
+			safeEvent(log, "OnConnect", func() { onConnect.OnConnect(sess) })
 		}
 
 		wg.Add(1)
@@ -356,7 +375,7 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 			defer wg.Done()
 			defer func() {
 				if e := recover(); e != nil {
-					slog.Default().Error("tcp server handler panic",
+					log.Error("tcp server handler panic",
 						"err", e, "remote", conn.RemoteAddr().String())
 				}
 			}()
@@ -368,7 +387,7 @@ func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
 				if onDisconnect != nil {
 					disconnected := sess
 					disconnected.LastActive = time.Unix(0, tc.lastActive.Load())
-					safeEvent("OnDisconnect", func() { onDisconnect.OnDisconnect(disconnected) })
+					safeEvent(log, "OnDisconnect", func() { onDisconnect.OnDisconnect(disconnected) })
 				}
 			}()
 			h.ServeTCP(ctx, tc)
@@ -414,7 +433,7 @@ func (c *tcpConn) Write(p []byte) (int, error) {
 }
 
 // reapIdle 定期关闭活跃超时的连接;handler 将因读错误退出并自行注销会话。
-func (s *TCPServer) reapIdle(ctx context.Context, active time.Duration) {
+func (s *TCPServer) reapIdle(ctx context.Context, active time.Duration, log *slog.Logger) {
 	interval := active / 4
 	if interval < 100*time.Millisecond {
 		interval = 100 * time.Millisecond
@@ -438,7 +457,7 @@ func (s *TCPServer) reapIdle(ctx context.Context, active time.Duration) {
 			s.mu.RUnlock()
 
 			for _, c := range stale {
-				slog.Default().Warn("tcp server 连接活跃超时,判定离线并踢除",
+				log.Warn("tcp server 连接活跃超时,判定离线并踢除",
 					"id", c.id, "remote", c.RemoteAddr().String(), "timeout", active)
 				_ = c.Close()
 			}
@@ -487,7 +506,7 @@ func (s *TCPServer) CloseConn(id uint64) error {
 }
 
 // waitConns 关闭全部活跃连接以解除 handler 阻塞,并限时等待其退出。
-func (s *TCPServer) waitConns(wg *sync.WaitGroup, timeout time.Duration) {
+func (s *TCPServer) waitConns(wg *sync.WaitGroup, timeout time.Duration, log *slog.Logger) {
 	s.mu.RLock()
 	for _, c := range s.conns {
 		_ = c.Close()
@@ -505,7 +524,7 @@ func (s *TCPServer) waitConns(wg *sync.WaitGroup, timeout time.Duration) {
 	select {
 	case <-done:
 	case <-time.After(timeout):
-		slog.Default().Warn("tcp server shutdown timeout,部分连接未能及时退出")
+		log.Warn("tcp server shutdown timeout,部分连接未能及时退出")
 	}
 }
 
@@ -514,11 +533,15 @@ func (s *TCPServer) waitConns(wg *sync.WaitGroup, timeout time.Duration) {
 type UDPServer struct {
 	mu     sync.RWMutex
 	config UDPOption
+	log    *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
 
 	conn   net.PacketConn
 	peers  map[string]*udpPeer
 	served bool
 }
+
+// setLog 注入框架初始化的组件 logger,由 widget 在装配阶段调用。
+func (s *UDPServer) setLog(log *slog.Logger) { s.log = log }
 
 // udpPeerTTL 内未再收包的对端在下次收包时被惰性清理。
 var udpPeerTTL = 5 * time.Minute
@@ -557,7 +580,7 @@ func (s *UDPServer) recordPeer(addr net.Addr) (added bool, pruned []net.Addr) {
 }
 
 // reapIdlePeers 定期清理超过 udpPeerTTL 未活跃的静默对端并触发离线事件。
-func (s *UDPServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconnect) {
+func (s *UDPServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconnect, log *slog.Logger) {
 	interval := udpPeerTTL / 4
 	if interval < 100*time.Millisecond {
 		interval = 100 * time.Millisecond
@@ -572,7 +595,7 @@ func (s *UDPServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconn
 		case <-t.C:
 			for _, pa := range s.prunePeers(time.Now()) {
 				if onDisconnect != nil {
-					safeEvent("OnPeerDisconnect", func() { onDisconnect.OnPeerDisconnect(pa) })
+					safeEvent(log, "OnPeerDisconnect", func() { onDisconnect.OnPeerDisconnect(pa) })
 				}
 			}
 		}
@@ -672,7 +695,8 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 	s.mu.Lock()
 	s.conn = conn
 	s.mu.Unlock()
-	slog.Default().Info("udp server listening", "addr", conn.LocalAddr().String())
+	log := serverLog(s.log)
+	log.Info("udp server listening", "addr", conn.LocalAddr().String())
 
 	// 事件回调:handler 按需实现 OnPeerConnect/OnPeerDisconnect,未实现则跳过
 	onConnect, _ := h.(UDPOnConnect)
@@ -680,7 +704,7 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 
 	// 静默对端清扫:定期清理超 TTL 未活跃的对端并触发离线事件,
 	// 使完全静默的对端也能被感知,不依附于后续收包
-	go s.reapIdlePeers(ctx, onDisconnect)
+	go s.reapIdlePeers(ctx, onDisconnect, log)
 
 	go func() {
 		<-ctx.Done()
@@ -698,12 +722,12 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 		if err != nil {
 			select {
 			case <-ctx.Done():
-				s.waitUDP(&wg, opt.ShutdownTimeout)
-				slog.Default().Info("udp server shutdown", "addr", conn.LocalAddr().String())
+				s.waitUDP(&wg, opt.ShutdownTimeout, log)
+				log.Info("udp server shutdown", "addr", conn.LocalAddr().String())
 				return nil
 			default:
 			}
-			slog.Default().Error("udp server read failed", "err", err)
+			log.Error("udp server read failed", "err", err)
 			return fmt.Errorf("udp server: read: %w", err)
 		}
 
@@ -711,7 +735,7 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 			select {
 			case sem <- struct{}{}:
 			default:
-				slog.Default().Warn("udp server 并发已达上限,丢弃报文",
+				log.Warn("udp server 并发已达上限,丢弃报文",
 					"max", opt.MaxConcurrent, "remote", addr.String())
 				continue
 			}
@@ -720,11 +744,11 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 		added, pruned := s.recordPeer(addr)
 		for _, pa := range pruned {
 			if onDisconnect != nil {
-				safeEvent("OnPeerDisconnect", func() { onDisconnect.OnPeerDisconnect(pa) })
+				safeEvent(log, "OnPeerDisconnect", func() { onDisconnect.OnPeerDisconnect(pa) })
 			}
 		}
 		if added && onConnect != nil {
-			safeEvent("OnPeerConnect", func() { onConnect.OnPeerConnect(addr) })
+			safeEvent(log, "OnPeerConnect", func() { onConnect.OnPeerConnect(addr) })
 		}
 
 		pkt := UDPPacket{Data: append([]byte(nil), buf[:n]...), Addr: addr}
@@ -736,24 +760,24 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 			}
 			defer func() {
 				if e := recover(); e != nil {
-					slog.Default().Error("udp server handler panic", "err", e, "remote", pkt.Addr.String())
+					log.Error("udp server handler panic", "err", e, "remote", pkt.Addr.String())
 				}
 			}()
 			resp, err := h.ServeUDP(ctx, pkt)
 			if err != nil {
-				slog.Default().Error("udp server handler failed", "err", err)
+				log.Error("udp server handler failed", "err", err)
 				return
 			}
 			if resp != nil {
 				if _, err := conn.WriteTo(resp, pkt.Addr); err != nil {
-					slog.Default().Error("udp server write failed", "err", err)
+					log.Error("udp server write failed", "err", err)
 				}
 			}
 		}()
 	}
 }
 
-func (s *UDPServer) waitUDP(wg *sync.WaitGroup, timeout time.Duration) {
+func (s *UDPServer) waitUDP(wg *sync.WaitGroup, timeout time.Duration, log *slog.Logger) {
 	if timeout <= 0 {
 		timeout = defaultShutdownTimeout
 	}
@@ -765,6 +789,6 @@ func (s *UDPServer) waitUDP(wg *sync.WaitGroup, timeout time.Duration) {
 	select {
 	case <-done:
 	case <-time.After(timeout):
-		slog.Default().Warn("udp server shutdown timeout,部分报文处理未完成")
+		log.Warn("udp server shutdown timeout,部分报文处理未完成")
 	}
 }
