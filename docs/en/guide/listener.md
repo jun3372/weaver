@@ -134,6 +134,13 @@ Combined with the event callbacks this closes the online/offline loop: receive-o
 
 Listener configuration matches the corresponding server component exactly (`HTTPOption` / `TCPOption` / `UDPOption`, including all [security options](/en/guide/servers#security-options)); the `conf` tag sits on the Listener field, and business config can share the same key via `WithConfig`. Config file changes are re-injected automatically, but `addr` is read at startup — changing the listen address still requires a restart.
 
+Inside the component, `Config()` reads the injected server config (returning the latest value after hot reload). The returned type matches the bound protocol; type-assert to use it:
+
+```go
+opt := i.Config().(weaver.TCPOption) // Addr / ActiveTimeout / MaxConns / ...
+i.Logger(ctx).Info("tcp config", "addr", opt.Addr, "activeTimeout", opt.ActiveTimeout)
+```
+
 ## Private Protocol Parsing
 
 TCP handlers receive a byte stream, so private protocols need their own framing; UDP frames naturally at datagram boundaries. `examples/protocol` demonstrates typical patterns such as the SOCKS5 method negotiation: TCP frames with `io.ReadFull` using a "fixed header + length field", UDP parses binary frames directly with `encoding/binary`.
