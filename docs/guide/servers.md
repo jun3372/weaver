@@ -95,6 +95,7 @@ tcp:
   addr: ":8081"
   maxConns: 1000           # 最大并发连接数,超过立即拒绝;<=0 不限(缺省)
   connIdleTimeout: 300s    # 空闲超时,每次收发自动续期,活跃连接不受影响;<=0 不限(缺省)
+  activeTimeout: 60s       # 活跃超时,收发双向成功操作均刷新;超时由后台清扫踢除并触发 OnDisconnect;缺省 60s,负值关闭
 ```
 
 ### UDP 报文处理并发上限
@@ -138,5 +139,6 @@ printf 'ping\n' | nc -u localhost 8082   # UDP echo
 
 ## 相关阅读
 
+- [Listener:自动注入配置与 Handler](/guide/listener)
 - [配置管理](/guide/config)
 - [生命周期管理](/guide/lifecycle)

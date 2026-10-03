@@ -51,6 +51,36 @@ curl localhost:8080                      # hello v2
 
 详见[服务组件](/guide/servers)。
 
+## echo — Listener 三协议示例
+
+`weaver.Listener[H]` 的四个独立可运行示例，组件实现 handler 即自动 Serve，无需 `Start`：
+
+- `echo/http`：HTTP Listener + `Mux()` 多路由
+- `echo/tcp`：TCP Listener，演示会话广播与排除自身
+- `echo/udp`：UDP Listener，演示对端管理与定点发送
+- `echo/all`：三协议网关同跑（HTTP :8080 / TCP :8081 / UDP :8082）
+
+```bash
+cd examples/echo/all
+go run . -conf weaver.yaml
+curl localhost:8080                      # http ok, tcp/udp 也在线
+printf 'ping\n' | nc localhost 8081      # TCP echo: ping
+printf 'ping\n' | nc -u localhost 8082   # UDP echo: PING
+curl localhost:8080/sessions             # 当前 TCP 会话数
+```
+
+## protocol — 私有协议解析
+
+演示在 TCP/UDP handler 中解析私有协议的典型写法：SOCKS5 方法协商（TCP 字节流用 `io.ReadFull` 按"定长头 + 长度域"分帧）与 UDP 二进制帧（按 datagram 边界直接 `encoding/binary` 解析），含单元测试。
+
+```bash
+cd examples/protocol
+go test ./...   # 协议解析单测
+go run . -conf weaver.yaml
+```
+
+详见 [Listener:自动注入配置与 Handler](/guide/listener)。
+
 ## template — 项目模板
 
 最小化的项目模板，建议新项目从复制 `examples/template` 开始：
@@ -62,3 +92,4 @@ curl localhost:8080                      # hello v2
 
 - [快速开始](/guide/getting-started)
 - [核心概念：组件与依赖注入](/guide/concepts)
+- [Listener:自动注入配置与 Handler](/guide/listener)

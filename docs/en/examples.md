@@ -51,6 +51,36 @@ curl localhost:8080                      # hello v2
 
 See [Server Components](/en/guide/servers).
 
+## echo — Listener Examples for All Three Protocols
+
+Four standalone runnable examples of `weaver.Listener[H]` — implement a handler on the component and it is served automatically, no `Start` needed:
+
+- `echo/http`: HTTP Listener + `Mux()` multi-route
+- `echo/tcp`: TCP Listener, demonstrating session broadcast with self-exclusion
+- `echo/udp`: UDP Listener, demonstrating peer management and targeted send
+- `echo/all`: three-protocol gateway in one process (HTTP :8080 / TCP :8081 / UDP :8082)
+
+```bash
+cd examples/echo/all
+go run . -conf weaver.yaml
+curl localhost:8080                      # http ok (tcp/udp also online)
+printf 'ping\n' | nc localhost 8081      # TCP echo: ping
+printf 'ping\n' | nc -u localhost 8082   # UDP echo: PING
+curl localhost:8080/sessions             # current TCP session count
+```
+
+## protocol — Private Protocol Parsing
+
+Demonstrates typical patterns for parsing private protocols inside TCP/UDP handlers: SOCKS5 method negotiation (TCP byte streams framed with `io.ReadFull` using a "fixed header + length field") and UDP binary frames (parsed directly with `encoding/binary` at datagram boundaries), with unit tests.
+
+```bash
+cd examples/protocol
+go test ./...   # protocol parsing tests
+go run . -conf weaver.yaml
+```
+
+See [Listener: Automatic Config & Handler Injection](/en/guide/listener).
+
 ## template — Project Template
 
 A minimal project template — the recommended starting point for new projects:
@@ -62,3 +92,4 @@ A minimal project template — the recommended starting point for new projects:
 
 - [Getting Started](/en/guide/getting-started)
 - [Core Concepts: Components & Dependency Injection](/en/guide/concepts)
+- [Listener: Automatic Config & Handler Injection](/en/guide/listener)
