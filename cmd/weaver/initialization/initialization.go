@@ -95,7 +95,7 @@ func runInit(dir string, cmd *cobra.Command) error {
 	}
 
 	if err := generate.Generate(abs, []string{"./..."}, generate.Options{BuildTags: "ignoreWeaverGen"}); err != nil {
-		fmt.Printf("提示: 代码生成失败(%v),请稍后手动执行 weaver generate .\n", err)
+		fmt.Printf("提示: 代码生成失败(%v),请稍后手动执行 weaver generate ./...\n", err)
 	} else {
 		fmt.Println("代码生成完成")
 	}

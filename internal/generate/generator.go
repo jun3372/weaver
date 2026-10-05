@@ -130,6 +130,12 @@ func Generate(dir string, pkgs []string, opt Options) error {
 	var automarshals typeutil.Map
 	var errs []error
 	for _, pkg := range pkgList {
+		if noGoFiles(pkg) {
+			// 目录下没有 Go 文件(如 init 模板把 main.go 放在 ./cmd 后对项目根
+			// 执行 generate),跳过即可,不应让整条命令失败。
+			opt.Warn(fmt.Errorf("跳过 %s: 无 Go 文件", pkg.PkgPath))
+			continue
+		}
 		g, err := newGenerator(opt, pkg, fset, &automarshals)
 		if err != nil {
 			errs = append(errs, err)
@@ -140,6 +146,19 @@ func Generate(dir string, pkgs []string, opt Options) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// noGoFiles 报告 pkg 是否仅因目录下没有 Go 文件而加载失败。
+func noGoFiles(pkg *packages.Package) bool {
+	if len(pkg.Syntax) > 0 {
+		return false
+	}
+	for _, err := range pkg.Errors {
+		if !strings.Contains(err.Msg, "no Go files") {
+			return false
+		}
+	}
+	return true
 }
 
 // parseNonWeaverGenFile parses a Go file, except for weaver_gen.go files whose
