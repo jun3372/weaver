@@ -14,20 +14,30 @@ Weaver components support the following optional lifecycle hooks:
 
 ## Start
 
-Components implementing `Start` are started **concurrently** before the main logic in `weaver.Run` runs:
+Components implementing `Start` are started **concurrently** before the main logic in `weaver.Run` runs. Ideal for long-running background jobs:
 
 ```go
-func (s *serverImpl) Start(ctx context.Context) error {
-    s.Logger(ctx).Info("Starting HTTP server")
-    return s.server.ListenAndServe()
+func (s *worker) Start(ctx context.Context) error {
+    t := time.NewTicker(time.Second)
+    defer t.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return nil // context done, job exits
+        case <-t.C:
+            s.Logger(ctx).Info("tick")
+        }
+    }
 }
 ```
+
+> Network servers (HTTP/TCP/UDP) need no `Start`: embed `weaver.Listener[H]` and the framework hosts them automatically, see [Listener](/en/guide/listener).
 
 Start-phase behavior:
 
 - All components start concurrently; `weaver.Run` proceeds to the main logic once every `Start` has been launched (long-running `Start`s don't block startup)
 - A synchronous fast failure in `Start` aborts startup and returns the error; async failures and panics trigger overall shutdown
-- Long-running services should block inside `Start` (or use the server components' `Serve`, see [Server Components](/en/guide/servers))
+- Long-running services should block inside `Start` (or use `weaver.Listener[H]` for automatic hosting, see [Listener](/en/guide/listener))
 
 ## Shutdown
 
@@ -62,7 +72,7 @@ func (a *app) Init(ctx context.Context) error {
 ## Complete Flow
 
 ```text
-weaver.Run
+weaver.Run / weaver.RunComponent
  ├─ parse -conf / -version flags
  ├─ load config file
  ├─ instantiate the Main component (dependencies cascade)
@@ -70,3 +80,5 @@ weaver.Run
  ├─ run the main logic app(ctx, main)
  └─ call Shutdown on all components on exit
 ```
+
+`weaver.RunComponent(ctx, (*app)(nil))` is a shorthand for `weaver.Run` with an identical startup flow — the main logic is fixed to "wait for the exit signal" (graceful shutdown on `SIGINT`/`SIGQUIT`/`SIGTERM` or a component calling `Exec()`, returning `nil`). The second parameter exists only for type inference.

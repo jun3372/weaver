@@ -64,7 +64,7 @@ See [Logging](/en/guide/logger).
 Weaver watches the config file via Viper's `WatchConfig`:
 
 - When the file changes, the configuration of all registered components is reloaded automatically (`UnmarshalKey` is re-run) — **no process restart, no service interruption**.
-- Whether a value "takes effect" depends on how it is used: fields read via `Config()` on every request/call apply immediately; fields read once inside `Start` (e.g. a server component's listen address) only pick up new values after a restart.
+- Whether a value "takes effect" depends on how it is used: fields read via `Config()` on every request/call apply immediately; fields read once at startup (e.g. the Listener's listen address) only pick up new values after a restart.
 
 This means saving an updated `weaver.yaml` is enough — no process restart required (as long as the config file was passed via `-conf`).
 
