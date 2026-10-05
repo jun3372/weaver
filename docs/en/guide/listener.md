@@ -1,6 +1,6 @@
-# Listener: Automatic Config & Handler Injection
+# Listener: HTTP / TCP / UDP Server Hosting
 
-`weaver.Listener[H]` collapses the "embed a server component + manually `Serve` inside `Start`" boilerplate into a single generic embedded field: implement any of `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler` on the component, embed a Listener, and the framework injects the configuration and serves the component itself as the handler — **no `Start` required**.
+`weaver.Listener[H]` collapses the declaration, configuration injection and lifecycle management of network services into a single generic embedded field: implement any of `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler` on the component, embed a Listener, and the framework injects the configuration, serves the service and manages graceful shutdown — **no `Start` required**.
 
 ```go
 type echo struct {
@@ -75,7 +75,15 @@ func (g *gateway) ServeTCP(ctx context.Context, conn net.Conn) { ... }
 func (g *gateway) ServeUDP(ctx context.Context, pkt weaver.UDPPacket) ([]byte, error) { ... }
 ```
 
-All three services start in parallel with independent configuration and independent graceful shutdown.
+All three services start in parallel with independent configuration and independent graceful shutdown. Note: **each protocol allows only one Listener per component** (validated at assembly time) — for multiple instances of the same protocol, split them across components.
+
+## Graceful Shutdown
+
+When the context is done (app exit or signal), the shutdown semantics per protocol:
+
+- **HTTP**: stops accepting new requests and waits for in-flight ones within `shutdownTimeout`; listen failures (e.g. port in use) abort startup with an error;
+- **TCP**: stops accepting, closes every active connection (unblocking handlers stuck in reads) and waits (bounded) for them to finish;
+- **UDP**: closes the read loop and waits (bounded) for in-flight packets.
 
 ## TCP Session Management and Targeted Push
 
@@ -130,9 +138,47 @@ tcp:
 
 Combined with the event callbacks this closes the online/offline loop: receive-only clients survive as long as pushes keep succeeding, while fully silent connections are reaped on timeout and trigger `OnDisconnect`.
 
+## Security Options
+
+Since v0.1.3 the servers ship with production-grade protections **enabled by default with zero configuration**. Every option can be tuned via its `conf` section; setting a negative/`<=0` value disables the corresponding limit.
+
+### Handler Panic Isolation
+
+The goroutines serving TCP connections and UDP packets are recovered by the framework: a panicking handler is logged as ERROR (with the peer address) and its connection is closed / packet dropped — **the process keeps running**.
+
+### HTTP Timeouts and Header Limits (anti-slowloris)
+
+```yaml
+api:
+  addr: ":8080"
+  readTimeout: 30s         # full request read timeout, default 30s
+  readHeaderTimeout: 10s   # request header read timeout, default 10s, primary slowloris defense
+  writeTimeout: 30s        # response write timeout, default 30s; set to -1s for long-lived streaming responses (SSE etc.)
+  idleTimeout: 120s        # keep-alive idle timeout, default 120s
+  maxHeaderBytes: 1048576  # max request header size, default 1MB
+```
+
+### TCP Connection Limit and Idle Timeout
+
+```yaml
+tcp:
+  addr: ":8081"
+  maxConns: 1000           # max concurrent connections, excess are rejected immediately; <=0 unlimited (default)
+  connIdleTimeout: 300s    # idle timeout, renewed on every read/write so active connections are unaffected; <=0 unlimited (default)
+  activeTimeout: 60s       # active timeout, refreshed by successful reads AND writes; expired connections are reaped and trigger OnDisconnect; default 60s, negative disables
+```
+
+### UDP Concurrency Limit
+
+```yaml
+udp:
+  addr: ":8082"
+  maxConcurrent: 512       # max in-flight packet handlers, excess packets are dropped with a warning; <=0 unlimited (default)
+```
+
 ## Configuration and Hot Reload
 
-Listener configuration matches the corresponding server component exactly (`HTTPOption` / `TCPOption` / `UDPOption`, including all [security options](/en/guide/servers#security-options)); the `conf` tag sits on the Listener field, and business config can share the same key via `WithConfig`. Config file changes are re-injected automatically, but `addr` is read at startup — changing the listen address still requires a restart.
+Listener configuration uses `HTTPOption` / `TCPOption` / `UDPOption` (including all [security options](#security-options)); the `conf` tag sits on the Listener field, and business config can share the same key via `WithConfig`. Config file changes are re-injected automatically, but `addr` is read at startup — changing the listen address still requires a restart.
 
 Inside the component, `Config()` reads the injected server config (returning the latest value after hot reload). The returned type matches the bound protocol; type-assert to use it:
 
@@ -154,14 +200,26 @@ TCP handlers receive a byte stream, so private protocols need their own framing;
 | `examples/echo/udp` | UDP Listener + peer management |
 | `examples/echo/all` | Three-protocol gateway in one process |
 | `examples/protocol` | SOCKS5 private protocol framing (with unit tests) |
+| `examples/http` | HTTP/TCP/UDP servers + config hot reload |
 
 ```bash
 cd examples/echo/all
 go run . -conf weaver.yaml
 ```
 
+`examples/http` demonstrates config hot reload: after editing `http.message` in `etc/weaver.yaml`, the HTTP response changes immediately without a restart:
+
+```bash
+cd examples/http
+go run . -conf etc/weaver.yaml
+curl localhost:8080        # hello v1
+# edit http.message in etc/weaver.yaml, no restart needed
+curl localhost:8080        # hello v2
+printf 'ping\n' | nc localhost 8081      # TCP echo
+printf 'ping\n' | nc -u localhost 8082   # UDP echo
+```
+
 ## Further Reading
 
-- [Server Components: HTTP / TCP / UDP](/en/guide/servers)
 - [Configuration](/en/guide/config)
 - [Lifecycle Management](/en/guide/lifecycle)

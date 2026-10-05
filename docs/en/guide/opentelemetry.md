@@ -31,27 +31,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type Server interface {
-	Start(ctx context.Context) error
-	Shutdown(ctx context.Context) error
-}
-
-type options struct {
-	Host string
-	Port int
-}
+type Server any
 
 type serverImpl struct {
 	weaver.Implements[Server]
-	weaver.WithConfig[options] `conf:"http"`
-
-	server *http.Server
+	weaver.Listener[weaver.Handler] `conf:"http"` // listening and graceful shutdown are framework-managed, no Start/Shutdown needed
 }
 
 func (s *serverImpl) Init(ctx context.Context) error {
-	cfg := s.Config()
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-
 	// create a traced HTTP handler
 	handler := http.NewServeMux()
 	handler.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
@@ -65,29 +52,22 @@ func (s *serverImpl) Init(ctx context.Context) error {
 		fmt.Fprintf(w, "Hello, World!")
 	})
 
-	// wrap the handler with otelhttp for automatic tracing
-	otelHandler := otelhttp.NewHandler(handler, "server",
+	// wrap the handler with otelhttp and register it with the Listener;
+	// the framework serves it automatically during startup
+	s.Listener.Handler(otelhttp.NewHandler(handler, "server",
 		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-	)
+	))
 
-	s.server = &http.Server{
-		Addr:    addr,
-		Handler: otelHandler,
-	}
-
-	s.Logger(ctx).Info("HTTP server initialized", "addr", addr)
+	s.Logger(ctx).Info("HTTP server initialized")
 	return nil
 }
+```
 
-func (s *serverImpl) Start(ctx context.Context) error {
-	s.Logger(ctx).Info("Starting HTTP server")
-	return s.server.ListenAndServe()
-}
+The corresponding config file (the `http` section is the Listener's `HTTPOption`, with more options such as `readTimeout` and `maxHeaderBytes`):
 
-func (s *serverImpl) Shutdown(ctx context.Context) error {
-	s.Logger(ctx).Info("Shutting down HTTP server")
-	return s.server.Shutdown(ctx)
-}
+```yaml
+http:
+  addr: ":8080"
 ```
 
 ## 3. Use an HTTP Client in the Application
@@ -105,14 +85,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
-
-	"myapp/http" // the HTTP server component defined above
 )
 
 type app struct {
 	weaver.Implements[weaver.Main]
-	weaver.WithConfig[options] `conf:"app"`
-	httpServer weaver.Ref[http.Server] // reference to the HTTP server component
 }
 
 func (a *app) Init(ctx context.Context) error {

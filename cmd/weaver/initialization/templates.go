@@ -27,21 +27,22 @@ type option struct {
 	Version string
 }
 
-// Main 是应用主组件:声明依赖(HTTP 服务)与配置,由 weaver.Run 装配启动。
+// Main 是应用主组件:声明依赖(HTTP 服务)与配置,由 weaver.RunComponent 装配启动。
 type Main struct {
 	weaver.Implements[weaver.Main]
 	weaver.WithConfig[option] ` + "`conf:\"app\"`" + `
 	weaver.Ref[app.HTTP]
 }
 
-func main() {
-	if err := weaver.Run(context.Background(), func(ctx context.Context, a *Main) error {
-		conf := a.Config()
-		a.Logger(ctx).Info("app 启动成功", "name", conf.Name, "version", conf.Version)
+func (m *Main) Init(ctx context.Context) error {
+	conf := m.Config()
+	m.Logger(ctx).Info("app 启动成功", "name", conf.Name, "version", conf.Version)
+	return nil
+}
 
-		<-ctx.Done()
-		return ctx.Err()
-	}); err != nil {
+func main() {
+	// 第二个参数仅用于类型推断,传 (*Main)(nil) 即可。
+	if err := weaver.RunComponent(context.Background(), (*Main)(nil)); err != nil {
 		panic(err)
 	}
 }

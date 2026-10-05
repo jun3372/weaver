@@ -31,7 +31,7 @@ go run . -conf etc/weaver.yaml
 
 ## http — HTTP/TCP/UDP Servers & Config Hot Reload
 
-One process running three servers, demonstrating the server components (`weaver.HTTPServer` / `TCPServer` / `UDPServer`) and config hot reload:
+One process running three servers, demonstrating `weaver.Listener[H]` server components (HTTP/TCP/UDP) and config hot reload:
 
 - `main.go`: main app referencing the three server components
 - `server/`: HTTP server whose response changes live with config reloads
@@ -49,7 +49,7 @@ printf 'ping\n' | nc -u localhost 8082   # UDP echo: PING
 curl localhost:8080                      # hello v2
 ```
 
-See [Server Components](/en/guide/servers).
+See [Listener: HTTP / TCP / UDP Server Hosting](/en/guide/listener).
 
 ## echo — Listener Examples for All Three Protocols
 
@@ -79,7 +79,7 @@ go test ./...   # protocol parsing tests
 go run . -conf weaver.yaml
 ```
 
-See [Listener: Automatic Config & Handler Injection](/en/guide/listener).
+See [Listener: HTTP / TCP / UDP Server Hosting](/en/guide/listener).
 
 ## template — Project Template
 
@@ -92,4 +92,4 @@ A minimal project template — the recommended starting point for new projects:
 
 - [Getting Started](/en/guide/getting-started)
 - [Core Concepts: Components & Dependency Injection](/en/guide/concepts)
-- [Listener: Automatic Config & Handler Injection](/en/guide/listener)
+- [Listener: HTTP / TCP / UDP Server Hosting](/en/guide/listener)

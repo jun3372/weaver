@@ -86,6 +86,20 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	return err
 }
 
+// RunComponent 启动全部组件后不执行额外主逻辑,阻塞等待退出信号
+// (SIGINT/SIGQUIT/SIGTERM)或组件调用 Exec(),随后优雅关闭并返回 nil。
+// app 仅用于类型推断,传 (*T)(nil) 即可:
+//
+//	if err := weaver.RunComponent(ctx, (*app)(nil)); err != nil {
+//		panic(err)
+//	}
+func RunComponent[T any, P PointerToMain[T]](ctx context.Context, app *T) error {
+	return Run[T, P](ctx, func(ctx context.Context, _ *T) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+}
+
 type WithConfig[T any] struct {
 	mu     sync.RWMutex
 	config T

@@ -29,7 +29,7 @@ curl localhost:8080   # Hello, Weaver!
 
 生成内容:
 
-- `cmd/main.go`:Main 组件(声明依赖与配置,由 `weaver.Run` 装配启动)
+- `cmd/main.go`:Main 组件(声明依赖与配置,由 `weaver.RunComponent` 装配启动)
 - `internal/app/http.go`:HTTP 服务组件,演示 `weaver.Listener[H]` + `Handler()` 接入(含 gin 注释示例),无需编写 `Start`
 - `etc/weaver.yaml`:配置文件(app / http 服务 / weaver 系统日志)
 - `Makefile`:run / build / generate / test / docker-build / compose-up / k8s-apply 等常用目标
@@ -102,9 +102,10 @@ weaver version
 
 v0.1.3 起版本信息支持自动回退，未做任何构建注入也能看到有意义的内容：
 
-- **Version**：`-ldflags` 注入值 → `go install` 安装时的模块版本 → `(dev)`
-- **Go Version**：编译器实际版本
-- **Git Commit / Build Time**：构建时的 VCS 戳记（建议构建时加 `-buildvcs=true`；工作区有未提交修改会追加 `-modified`）
+- **版本行**（`Weaver x.y.z`）：`-ldflags` 注入值 → `go install` 安装时的模块版本 → `(dev)`
+- **Go**：编译器实际版本
+- **OS/Arch**：目标平台
+- **Commit / Built**：构建时的 VCS 戳记（建议构建时加 `-buildvcs=true`；工作区有未提交修改会追加 `-modified`，完整 40 位哈希自动截短为 7 位）
 
 应用本身也支持 `-version` 参数（或环境变量 `SERVICE_VERSION=true`）打印版本信息，回退逻辑相同：
 

@@ -29,7 +29,7 @@ curl localhost:8080   # Hello, Weaver!
 
 What you get:
 
-- `cmd/main.go`: the Main component (declares dependencies and config, assembled and started by `weaver.Run`)
+- `cmd/main.go`: the Main component (declares dependencies and config, assembled and started by `weaver.RunComponent`)
 - `internal/app/http.go`: an HTTP server component demonstrating `weaver.Listener[H]` + `Handler()` wiring (with a commented gin example) — no `Start` needed
 - `etc/weaver.yaml`: config file (app / http server / weaver logger)
 - `Makefile`: common targets — run / build / generate / test / docker-build / compose-up / k8s-apply
@@ -102,9 +102,10 @@ weaver version
 
 Since v0.1.3 version info falls back automatically, so the output is meaningful even without any build-time injection:
 
-- **Version**: `-ldflags` injected value → module version when installed via `go install` → `(dev)`
-- **Go Version**: the actual toolchain version
-- **Git Commit / Build Time**: VCS stamping embedded at build time (add `-buildvcs=true` when building; uncommitted changes append `-modified`)
+- **Version line** (`Weaver x.y.z`): `-ldflags` injected value → module version when installed via `go install` → `(dev)`
+- **Go**: the actual toolchain version
+- **OS/Arch**: the target platform
+- **Commit / Built**: VCS stamping embedded at build time (add `-buildvcs=true` when building; uncommitted changes append `-modified`, and a full 40-char hash is shortened to 7 chars)
 
 Applications also support `-version` (or the environment variable `SERVICE_VERSION=true`) to print version info, with the same fallback logic:
 

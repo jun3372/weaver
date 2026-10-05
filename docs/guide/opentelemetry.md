@@ -31,27 +31,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type Server interface {
-	Start(ctx context.Context) error
-	Shutdown(ctx context.Context) error
-}
-
-type options struct {
-	Host string
-	Port int
-}
+type Server any
 
 type serverImpl struct {
 	weaver.Implements[Server]
-	weaver.WithConfig[options] `conf:"http"`
-
-	server *http.Server
+	weaver.Listener[weaver.Handler] `conf:"http"` // 监听与优雅关闭由框架托管,无需 Start/Shutdown
 }
 
 func (s *serverImpl) Init(ctx context.Context) error {
-	cfg := s.Config()
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-
 	// 创建带有追踪的 HTTP 处理器
 	handler := http.NewServeMux()
 	handler.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
@@ -65,29 +52,21 @@ func (s *serverImpl) Init(ctx context.Context) error {
 		fmt.Fprintf(w, "Hello, World!")
 	})
 
-	// 使用 otelhttp 包装 HTTP 处理器，自动添加追踪
-	otelHandler := otelhttp.NewHandler(handler, "server",
+	// 使用 otelhttp 包装 HTTP 处理器后注册给 Listener,启动阶段自动 Serve
+	s.Listener.Handler(otelhttp.NewHandler(handler, "server",
 		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-	)
+	))
 
-	s.server = &http.Server{
-		Addr:    addr,
-		Handler: otelHandler,
-	}
-
-	s.Logger(ctx).Info("HTTP server initialized", "addr", addr)
+	s.Logger(ctx).Info("HTTP server initialized")
 	return nil
 }
+```
 
-func (s *serverImpl) Start(ctx context.Context) error {
-	s.Logger(ctx).Info("Starting HTTP server")
-	return s.server.ListenAndServe()
-}
+对应的配置文件（`http` 段为 Listener 的 `HTTPOption`，还支持 `readTimeout`、`maxHeaderBytes` 等选项）：
 
-func (s *serverImpl) Shutdown(ctx context.Context) error {
-	s.Logger(ctx).Info("Shutting down HTTP server")
-	return s.server.Shutdown(ctx)
-}
+```yaml
+http:
+  addr: ":8080"
 ```
 
 ## 3. 在应用中使用 HTTP 客户端
@@ -105,14 +84,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
-
-	"myapp/http" // 引入上面定义的 HTTP 服务组件
 )
 
 type app struct {
 	weaver.Implements[weaver.Main]
-	weaver.WithConfig[options] `conf:"app"`
-	httpServer weaver.Ref[http.Server] // 引用 HTTP 服务组件
 }
 
 func (a *app) Init(ctx context.Context) error {

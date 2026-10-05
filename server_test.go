@@ -47,8 +47,8 @@ func okHandler() http.Handler {
 }
 
 func TestHTTPServerServeAndGracefulShutdown(t *testing.T) {
-	var srv HTTPServer
-	srv.SetConfig(HTTPOption{Addr: ":0"})
+	var srv httpServer
+	srv.setConfig(HTTPOption{Addr: ":0"})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
@@ -57,9 +57,9 @@ func TestHTTPServerServeAndGracefulShutdown(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { errCh <- srv.Serve(ctx, mux) }()
+	go func() { errCh <- srv.serve(ctx, mux) }()
 
-	addr := waitAddr(t, srv.Addr)
+	addr := waitAddr(t, srv.addr)
 	resp, err := http.Get("http://" + addr)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
@@ -74,14 +74,14 @@ func TestHTTPServerServeAndGracefulShutdown(t *testing.T) {
 	requireServeReturn(t, errCh, "HTTP")
 
 	// Serve 返回后运行态应清空:Addr 归零,且可重新 Serve
-	if addr := srv.Addr(); addr != "" {
+	if addr := srv.addr(); addr != "" {
 		t.Fatalf("Serve 返回后 Addr 应为空,实际 %q", addr)
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	errCh2 := make(chan error, 1)
-	go func() { errCh2 <- srv.Serve(ctx2, mux) }()
-	waitAddr(t, srv.Addr)
+	go func() { errCh2 <- srv.serve(ctx2, mux) }()
+	waitAddr(t, srv.addr)
 	cancel2()
 	requireServeReturn(t, errCh2, "HTTP retry")
 
@@ -94,25 +94,25 @@ func TestHTTPServerServeAndGracefulShutdown(t *testing.T) {
 }
 
 func TestHTTPServerRequiresAddr(t *testing.T) {
-	var srv HTTPServer
-	err := srv.Serve(context.Background(), http.NewServeMux())
+	var srv httpServer
+	err := srv.serve(context.Background(), http.NewServeMux())
 	if err == nil || !strings.Contains(err.Error(), "未配置监听地址") {
 		t.Fatalf("空 Addr 应返回明确错误,实际: %v", err)
 	}
 }
 
 func TestHTTPServerDoubleServe(t *testing.T) {
-	var srv HTTPServer
-	srv.SetConfig(HTTPOption{Addr: ":0"})
+	var srv httpServer
+	srv.setConfig(HTTPOption{Addr: ":0"})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Serve(ctx, http.NewServeMux()) }()
-	waitAddr(t, srv.Addr)
+	go func() { errCh <- srv.serve(ctx, http.NewServeMux()) }()
+	waitAddr(t, srv.addr)
 
-	if err := srv.Serve(ctx, http.NewServeMux()); err == nil {
+	if err := srv.serve(ctx, http.NewServeMux()); err == nil {
 		t.Fatal("重复 Serve 应返回错误")
 	}
 	cancel()
@@ -126,19 +126,19 @@ func TestHTTPServerListenError(t *testing.T) {
 	}
 	defer ln.Close()
 
-	var srv HTTPServer
-	srv.SetConfig(HTTPOption{Addr: ln.Addr().String()})
-	if err := srv.Serve(context.Background(), http.NewServeMux()); err == nil {
+	var srv httpServer
+	srv.setConfig(HTTPOption{Addr: ln.Addr().String()})
+	if err := srv.serve(context.Background(), http.NewServeMux()); err == nil {
 		t.Fatal("端口占用时 Serve 应返回错误")
 	}
 
 	// listen 失败后修正配置应可重试
-	srv.SetConfig(HTTPOption{Addr: ":0"})
+	srv.setConfig(HTTPOption{Addr: ":0"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Serve(ctx, okHandler()) }()
-	waitAddr(t, srv.Addr)
+	go func() { errCh <- srv.serve(ctx, okHandler()) }()
+	waitAddr(t, srv.addr)
 	cancel()
 	requireServeReturn(t, errCh, "HTTP retry after listen failure")
 }
@@ -159,14 +159,14 @@ func (echoTCPHandler) ServeTCP(_ context.Context, conn net.Conn) {
 }
 
 func TestTCPServerEchoAndGracefulShutdown(t *testing.T) {
-	var srv TCPServer
-	srv.SetConfig(TCPOption{Addr: ":0"})
+	var srv tcpServer
+	srv.setConfig(TCPOption{Addr: ":0"})
 
 	errCh := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { errCh <- srv.Serve(ctx, echoTCPHandler{}) }()
+	go func() { errCh <- srv.serve(ctx, echoTCPHandler{}) }()
 
-	conn, err := net.Dial("tcp", waitAddr(t, srv.Addr))
+	conn, err := net.Dial("tcp", waitAddr(t, srv.addr))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -186,14 +186,14 @@ func TestTCPServerEchoAndGracefulShutdown(t *testing.T) {
 	requireServeReturn(t, errCh, "TCP")
 
 	// Serve 返回后 Addr 归零,且可重新 Serve
-	if addr := srv.Addr(); addr != "" {
+	if addr := srv.addr(); addr != "" {
 		t.Fatalf("Serve 返回后 Addr 应为空,实际 %q", addr)
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	errCh2 := make(chan error, 1)
-	go func() { errCh2 <- srv.Serve(ctx2, echoTCPHandler{}) }()
-	waitAddr(t, srv.Addr)
+	go func() { errCh2 <- srv.serve(ctx2, echoTCPHandler{}) }()
+	waitAddr(t, srv.addr)
 	cancel2()
 	requireServeReturn(t, errCh2, "TCP retry")
 
@@ -205,8 +205,8 @@ func TestTCPServerEchoAndGracefulShutdown(t *testing.T) {
 }
 
 func TestTCPServerRequiresAddr(t *testing.T) {
-	var srv TCPServer
-	if err := srv.Serve(context.Background(), echoTCPHandler{}); err == nil ||
+	var srv tcpServer
+	if err := srv.serve(context.Background(), echoTCPHandler{}); err == nil ||
 		!strings.Contains(err.Error(), "未配置监听地址") {
 		t.Fatalf("空 Addr 应返回明确错误,实际: %v", err)
 	}
@@ -219,18 +219,18 @@ func TestTCPServerRetryAfterListenFailure(t *testing.T) {
 	}
 	defer ln.Close()
 
-	var srv TCPServer
-	srv.SetConfig(TCPOption{Addr: ln.Addr().String()})
-	if err := srv.Serve(context.Background(), echoTCPHandler{}); err == nil {
+	var srv tcpServer
+	srv.setConfig(TCPOption{Addr: ln.Addr().String()})
+	if err := srv.serve(context.Background(), echoTCPHandler{}); err == nil {
 		t.Fatal("端口占用时 Serve 应返回错误")
 	}
 
-	srv.SetConfig(TCPOption{Addr: ":0"})
+	srv.setConfig(TCPOption{Addr: ":0"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Serve(ctx, echoTCPHandler{}) }()
-	waitAddr(t, srv.Addr)
+	go func() { errCh <- srv.serve(ctx, echoTCPHandler{}) }()
+	waitAddr(t, srv.addr)
 	cancel()
 	requireServeReturn(t, errCh, "TCP retry after listen failure")
 }
@@ -242,14 +242,14 @@ func (echoUDPHandler) ServeUDP(_ context.Context, pkt UDPPacket) ([]byte, error)
 }
 
 func TestUDPServerEcho(t *testing.T) {
-	var srv UDPServer
-	srv.SetConfig(UDPOption{Addr: ":0"})
+	var srv udpServer
+	srv.setConfig(UDPOption{Addr: ":0"})
 
 	errCh := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { errCh <- srv.Serve(ctx, echoUDPHandler{}) }()
+	go func() { errCh <- srv.serve(ctx, echoUDPHandler{}) }()
 
-	conn, err := net.Dial("udp", waitAddr(t, srv.Addr))
+	conn, err := net.Dial("udp", waitAddr(t, srv.addr))
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -272,14 +272,14 @@ func TestUDPServerEcho(t *testing.T) {
 	requireServeReturn(t, errCh, "UDP")
 
 	// Serve 返回后 Addr 归零,且可重新 Serve
-	if addr := srv.Addr(); addr != "" {
+	if addr := srv.addr(); addr != "" {
 		t.Fatalf("Serve 返回后 Addr 应为空,实际 %q", addr)
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	errCh2 := make(chan error, 1)
-	go func() { errCh2 <- srv.Serve(ctx2, echoUDPHandler{}) }()
-	waitAddr(t, srv.Addr)
+	go func() { errCh2 <- srv.serve(ctx2, echoUDPHandler{}) }()
+	waitAddr(t, srv.addr)
 	cancel2()
 	requireServeReturn(t, errCh2, "UDP retry")
 }
@@ -287,22 +287,22 @@ func TestUDPServerEcho(t *testing.T) {
 // 同一组件声明多个服务实例(不同 conf key)应可并发服务。
 func TestMultipleServersConcurrently(t *testing.T) {
 	var (
-		api   HTTPServer
-		admin HTTPServer
+		api   httpServer
+		admin httpServer
 	)
-	api.SetConfig(HTTPOption{Addr: ":0"})
-	admin.SetConfig(HTTPOption{Addr: ":0"})
+	api.setConfig(HTTPOption{Addr: ":0"})
+	admin.setConfig(HTTPOption{Addr: ":0"})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	apiErr := make(chan error, 1)
 	adminErr := make(chan error, 1)
-	go func() { apiErr <- api.Serve(ctx, okHandler()) }()
-	go func() { adminErr <- admin.Serve(ctx, okHandler()) }()
+	go func() { apiErr <- api.serve(ctx, okHandler()) }()
+	go func() { adminErr <- admin.serve(ctx, okHandler()) }()
 
-	apiAddr := waitAddr(t, api.Addr)
-	adminAddr := waitAddr(t, admin.Addr)
+	apiAddr := waitAddr(t, api.addr)
+	adminAddr := waitAddr(t, admin.addr)
 	if apiAddr == adminAddr {
 		t.Fatal("两个实例应绑定不同地址")
 	}
@@ -323,17 +323,17 @@ func TestMultipleServersConcurrently(t *testing.T) {
 	requireServeReturn(t, adminErr, "HTTP admin")
 }
 
-// startTCPServe 启动 TCPServer 并等待监听就绪,返回停止函数。
-func startTCPServe(t *testing.T, opt TCPOption, h TCPHandler) (*TCPServer, func()) {
+// startTCPServe 启动 tcpServer 并等待监听就绪,返回停止函数。
+func startTCPServe(t *testing.T, opt TCPOption, h TCPHandler) (*tcpServer, func()) {
 	t.Helper()
-	var s TCPServer
-	s.SetConfig(opt)
+	var s tcpServer
+	s.setConfig(opt)
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.Serve(ctx, h) }()
+	go func() { errCh <- s.serve(ctx, h) }()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if s.Addr() != "" {
+		if s.addr() != "" {
 			return &s, func() {
 				cancel()
 				select {
@@ -349,16 +349,16 @@ func startTCPServe(t *testing.T, opt TCPOption, h TCPHandler) (*TCPServer, func(
 	return nil, nil
 }
 
-func startUDPServe(t *testing.T, opt UDPOption, h UDPPacketHandler) (*UDPServer, func()) {
+func startUDPServe(t *testing.T, opt UDPOption, h UDPPacketHandler) (*udpServer, func()) {
 	t.Helper()
-	var s UDPServer
-	s.SetConfig(opt)
+	var s udpServer
+	s.setConfig(opt)
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.Serve(ctx, h) }()
+	go func() { errCh <- s.serve(ctx, h) }()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if s.Addr() != "" {
+		if s.addr() != "" {
 			return &s, func() {
 				cancel()
 				select {
@@ -394,7 +394,7 @@ func TestTCPServeRecoversHandlerPanic(t *testing.T) {
 	s, stop := startTCPServe(t, TCPOption{Addr: "127.0.0.1:0"}, panicAwareTCP{})
 	defer stop()
 
-	boom, err := net.Dial("tcp", s.Addr())
+	boom, err := net.Dial("tcp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestTCPServeRecoversHandlerPanic(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	_ = boom.Close()
 
-	good, err := net.Dial("tcp", s.Addr())
+	good, err := net.Dial("tcp", s.addr())
 	if err != nil {
 		t.Fatalf("panic 后服务应仍在运行: %v", err)
 	}
@@ -435,7 +435,7 @@ func TestUDPServeRecoversHandlerPanic(t *testing.T) {
 	s, stop := startUDPServe(t, UDPOption{Addr: "127.0.0.1:0"}, panicAwareUDP{})
 	defer stop()
 
-	conn, err := net.Dial("udp", s.Addr())
+	conn, err := net.Dial("udp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,30 +459,30 @@ func TestUDPServeRecoversHandlerPanic(t *testing.T) {
 	}
 }
 
-// --- 问题 2: HTTPServer 超时配置生效 ---
+// --- 问题 2: httpServer 超时配置生效 ---
 
 func TestHTTPServerReadHeaderTimeout(t *testing.T) {
-	var s HTTPServer
-	s.SetConfig(HTTPOption{
+	var s httpServer
+	s.setConfig(HTTPOption{
 		Addr:              "127.0.0.1:0",
 		ReadHeaderTimeout: 150 * time.Millisecond,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
-	go func() { errCh <- s.Serve(ctx, http.NewServeMux()) }()
+	go func() { errCh <- s.serve(ctx, http.NewServeMux()) }()
 	defer func() {
 		cancel()
 		<-errCh
 	}()
 	deadline := time.Now().Add(3 * time.Second)
-	for s.Addr() == "" {
+	for s.addr() == "" {
 		if time.Now().After(deadline) {
 			t.Fatal("HTTPServer 启动超时")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	conn, err := net.Dial("tcp", s.Addr())
+	conn, err := net.Dial("tcp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +505,7 @@ func TestTCPServerMaxConns(t *testing.T) {
 		discardTCP{})
 	defer stop()
 
-	first, err := net.Dial("tcp", s.Addr())
+	first, err := net.Dial("tcp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +515,7 @@ func TestTCPServerMaxConns(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond) // 等待服务端 accept 并登记
 
-	second, err := net.Dial("tcp", s.Addr())
+	second, err := net.Dial("tcp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +540,7 @@ func TestTCPServerConnIdleTimeout(t *testing.T) {
 	}, discardTCP{})
 	defer stop()
 
-	conn, err := net.Dial("tcp", s.Addr())
+	conn, err := net.Dial("tcp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func TestTCPServerConnIdleTimeout(t *testing.T) {
 	}
 
 	// 活跃连接不受影响:持续读写期间 deadline 自动续期
-	active, err := net.Dial("tcp", s.Addr())
+	active, err := net.Dial("tcp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +580,7 @@ func TestUDPServerMaxConcurrent(t *testing.T) {
 	s, stop := startUDPServe(t, UDPOption{Addr: "127.0.0.1:0", MaxConcurrent: 1}, h)
 	defer stop()
 
-	conn, err := net.Dial("udp", s.Addr())
+	conn, err := net.Dial("udp", s.addr())
 	if err != nil {
 		t.Fatal(err)
 	}

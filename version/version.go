@@ -5,6 +5,8 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strings"
+	"time"
 )
 
 var (
@@ -15,7 +17,7 @@ var (
 	// GitCommit git提交commit id,留空时自动取构建时的 VCS 信息
 	GitCommit = ""
 	// BuildTime 构建时间,留空时自动取 VCS 提交时间
-	BuildTime = ""
+	BuildTime = time.Now().Format(time.DateTime + " MST")
 )
 
 // PrintVersion 输出版本信息。
@@ -24,17 +26,46 @@ var (
 func PrintVersion() {
 	info, _ := debug.ReadBuildInfo()
 
-	fmt.Printf("Version: %s\n", cmpOr(Version, moduleVersion(info), "(dev)"))
-	fmt.Printf("Go Version: %s\n", cmpOr(GoVersion, runtime.Version()))
+	fmt.Printf("Weaver %s\n", cmpOr(Version, moduleVersion(info), "(dev)"))
+
+	row("Go", cmpOr(GoVersion, runtime.Version()))
+	row("OS/Arch", runtime.GOOS+"/"+runtime.GOARCH)
 
 	commit, buildTime := vcsInfo(info)
-	if c := cmpOr(GitCommit, commit, ""); c != "" {
-		fmt.Printf("Git Commit: %s\n", c)
+	if c := cmpOr(GitCommit, commit); c != "" {
+		row("Commit", shortCommit(c))
 	}
-	if b := cmpOr(BuildTime, buildTime, ""); b != "" {
-		fmt.Printf("Build Time: %s\n", b)
+	if b := cmpOr(buildTime, BuildTime); b != "" {
+		row("Built", fmtTime(b))
 	}
 	os.Exit(0)
+}
+
+// row 输出对齐的键值行,值为空时整行省略。
+func row(key, val string) {
+	if val == "" {
+		return
+	}
+	fmt.Printf("  %-8s %s\n", key+":", val)
+}
+
+// shortCommit 将完整 40 位提交哈希截短为 7 位,保留 -modified 后缀。
+func shortCommit(commit string) string {
+	if s, ok := strings.CutSuffix(commit, "-modified"); ok {
+		return shortCommit(s) + "-modified"
+	}
+	if len(commit) == 40 {
+		return commit[:7]
+	}
+	return commit
+}
+
+// fmtTime 将 VCS 的 RFC3339 时间戳格式化为更易读的形式,解析失败时原样返回。
+func fmtTime(t string) string {
+	if ts, err := time.Parse(time.RFC3339, t); err == nil {
+		return ts.UTC().Format("2006-01-02 15:04:05 UTC")
+	}
+	return t
 }
 
 // cmpOr 返回第一个非空值,全空返回 def。

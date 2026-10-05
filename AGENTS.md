@@ -9,7 +9,7 @@
 核心能力：
 - 基于接口的组件 + 依赖注入（`weaver.Ref[T]`）
 - 配置注入（`weaver.WithConfig[T]` + `conf:` tag），基于 Viper 支持热更新
-- 服务组件（`weaver.HTTPServer` / `weaver.TCPServer` / `weaver.UDPServer` + `conf:` tag）：框架托管监听、连接管理与优雅关闭，用户只需在 `Start` 中挂载 handler；同一进程可运行多个实例
+- 服务组件：`weaver.Listener[H]`（`H` 为 `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler` 或聚合接口 `weaver.Handler`）+ `conf:` tag，框架托管监听、连接管理与优雅关闭并自动 Serve，用户实现 handler 或经 `Handler()`/`Mux()` 注入；同一组件同一协议只能声明一个 Listener
 - 生命周期钩子（`Init` / `Start` / `Shutdown`），Start 异步启动（失败经 cancel 上报）
 - 基于 `log/slog` 的日志（`weaver.Implements[T]` 自带 `Logger(ctx)`，自动注入 trace/span ID）
 - OpenTelemetry trace 上下文透传
@@ -40,7 +40,7 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 | 路径 | 职责 |
 |---|---|
 | `weaver.go` | 公共 API：`Main`、`Run[T,P]`、`Implements[T]`、`WithConfig[T]`、`Ref[T]`、`Exec` |
-| `server.go` | 服务组件：`HTTPServer` / `TCPServer` / `UDPServer`，配置注入同 `WithConfig` 链路，`Serve(ctx, handler)` 长驻并优雅关闭 |
+| `server.go` | `Listener[H]` 的内部服务端：HTTP / TCP / UDP 托管实现（非导出），配置注入、长驻 `serve` 并优雅关闭 |
 | `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger/服务组件配置、并发启动、优雅关闭（startWG barrier） |
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |
 | `cmd/weaver/` | cobra CLI：`init`（项目脚手架）、`make`（组件实现生成）、`generate`（注册代码生成）、`version` |

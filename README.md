@@ -11,7 +11,7 @@ Weaver 是一个基于组件（component）的轻量级 Go 应用框架。通过
 
 - 📦 **组件化架构**：基于接口的组件系统，`weaver.Ref[T]` 声明依赖，启动时自动装配并支持循环引用
 - 🔧 **声明式配置注入**：`weaver.WithConfig[T]` + `conf:` 标签，基于 [Viper](https://github.com/spf13/viper) 支持 YAML / TOML / JSON，**配置热更新无需重启**
-- 🌐 **服务组件**：`weaver.HTTPServer` / `TCPServer` / `UDPServer` 声明式托管监听、连接管理与优雅关闭，内置生产级安全防护；`weaver.Listener[H]` 进一步聚合为"实现 handler 即自动 Serve"，支持 TCP 会话 / UDP 对端管理与定点推送
+- 🌐 **服务组件**：`weaver.Listener[H]` 声明式托管 HTTP/TCP/UDP 监听、连接管理与优雅关闭，实现 handler 即自动 Serve，内置生产级安全防护，支持 TCP 会话 / UDP 对端管理与定点推送
 - 🔄 **生命周期管理**：`Init` / `Start` / `Shutdown` 钩子，`Start` 支持长驻阻塞，进程退出时统一优雅关闭
 - 📝 **结构化日志**：基于标准库 `slog`，`Logger(ctx)` 自动附加 trace/span ID，支持文件轮转
 - 🔍 **OpenTelemetry 兼容**：trace 上下文自动透传到日志，可与 otelhttp 等标准生态无缝集成
@@ -30,7 +30,7 @@ go get github.com/jun3372/weaver
 如需固定到某个发布版本：
 
 ```bash
-go get github.com/jun3372/weaver@v0.1.3
+go get github.com/jun3372/weaver@v0.1.6
 ```
 
 CLI 工具可以独立安装：
@@ -108,6 +108,16 @@ func main() {
 }
 ```
 
+如果没有额外主逻辑、只需跑组件等退出信号，可用 `weaver.RunComponent` 一行简写（第二个参数仅用于类型推断，传 `(*app)(nil)` 即可；收到退出信号或组件调用 `Exec()` 后优雅关闭）：
+
+```go
+func main() {
+    if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
+        panic(err)
+    }
+}
+```
+
 ### 3. 编写配置文件（weaver.yaml）
 
 ```yaml
@@ -150,7 +160,7 @@ type app struct {
     cache weaver.Ref[cache.Cache]  // 依赖注入(支持循环引用,解析到同一实例)
     user  weaver.Ref[user.User]
 
-    api   weaver.HTTPServer `conf:"api"`   // 服务组件也是组件字段
+    api   weaver.Listener[weaver.Handler] `conf:"api"` // 服务字段:自动托管 HTTP 监听
 }
 ```
 
@@ -225,20 +235,21 @@ weaver:
 
 ## 服务组件
 
-v0.1.2 起提供三个声明式网络服务组件，监听、accept 循环、连接管理与优雅关闭全部由框架托管；同一进程/组件可声明多个实例。
+`weaver.Listener[H]` 提供声明式网络服务托管：监听、accept 循环、连接管理与优雅关闭全部由框架托管。组件内嵌 Listener 字段并打上 `conf:` 标签后，框架在启动阶段自动 Serve——**无需编写 `Start`**。`H` 支持 `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler`，或自动探测的聚合接口 `weaver.Handler`。
 
 ### HTTP
 
 ```go
 type api struct {
     weaver.Implements[Api]
-    weaver.HTTPServer `conf:"api"`
+    weaver.Listener[weaver.Handler] `conf:"api"`
 }
 
-func (i *api) Start(ctx context.Context) error {
+func (i *api) Init(ctx context.Context) error {
     mux := http.NewServeMux()
     mux.HandleFunc("/", handle)
-    return i.HTTPServer.Serve(ctx, mux) // 长驻阻塞,ctx 结束后优雅关闭
+    i.Listener.Handler(mux) // 注册后启动阶段自动 Serve,ctx 结束后优雅关闭
+    return nil
 }
 ```
 
@@ -247,15 +258,11 @@ func (i *api) Start(ctx context.Context) error {
 ```go
 type echo struct {
     weaver.Implements[Echo]
-    weaver.TCPServer `conf:"tcp"`
-}
-
-func (i *echo) Start(ctx context.Context) error {
-    return i.TCPServer.Serve(ctx, echoHandler{})
+    weaver.Listener[weaver.TCPHandler] `conf:"tcp"`
 }
 
 // conn 的生命周期由框架负责
-func (echoHandler) ServeTCP(ctx context.Context, conn net.Conn) {
+func (i *echo) ServeTCP(ctx context.Context, conn net.Conn) {
     // 读写 conn,直到对端关闭
 }
 ```
@@ -265,34 +272,18 @@ func (echoHandler) ServeTCP(ctx context.Context, conn net.Conn) {
 ```go
 type echo struct {
     weaver.Implements[Echo]
-    weaver.UDPServer `conf:"udp"`
-}
-
-func (i *echo) Start(ctx context.Context) error {
-    return i.UDPServer.Serve(ctx, echoHandler{})
+    weaver.Listener[weaver.UDPPacketHandler] `conf:"udp"`
 }
 
 // 返回非 nil 字节即作为回包发往来源地址
-func (echoHandler) ServeUDP(ctx context.Context, pkt weaver.UDPPacket) ([]byte, error) {
+func (i *echo) ServeUDP(ctx context.Context, pkt weaver.UDPPacket) ([]byte, error) {
     return pkt.Data, nil
 }
 ```
 
-### Listener：自动注入配置与 Handler
+### HTTP Handler 的多种注入方式
 
-不想写 `Start` 时，改用 `weaver.Listener[H]`：组件实现 `http.Handler` / `TCPHandler` / `UDPPacketHandler` 任意一个并内嵌 Listener，框架即自动注入配置并以组件自身为 handler 启动服务。
-
-```go
-type echo struct {
-    weaver.Implements[Echo]
-    weaver.Listener[weaver.Handler] `conf:"listener"` // 配置自动注入,无需 Start
-    weaver.WithConfig[option]       `conf:"listener"` // 可选:业务配置共用同一 key
-}
-
-func (i *echo) ServeHTTP(w http.ResponseWriter, _ *http.Request) { ... }
-```
-
-HTTP 的 handler 也可以不写在组件上，`Listener` 内置两种注入方式（优先级高于组件自身实现），在 `Init` 中完成即可：
+handler 不写在组件上时，`Listener` 内置两种注入方式（优先级高于组件自身实现），在 `Init` 中完成即可：
 
 ```go
 type api struct {
@@ -386,7 +377,7 @@ tcp:
   activeTimeout: 300s   # 活跃超时,收发双向成功操作均刷新;缺省 60s,负值关闭
 ```
 
-完整配置说明见[文档站 · 服务组件](https://jun3372.github.io/weaver/guide/servers)与[文档站 · Listener](https://jun3372.github.io/weaver/guide/listener)。
+完整配置说明见[文档站 · Listener](https://jun3372.github.io/weaver/guide/listener)。
 
 ## 日志
 
@@ -411,8 +402,8 @@ Weaver 不绑定特定 tracing 后端，与 OpenTelemetry 生态按标准方式�
 - **标准接入**：HTTP 服务可用 [`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp) 包装 handler，客户端用 `otelhttp.NewTransport`，导出器按 OTel 官方方式初始化
 
 ```go
-handler := otelhttp.NewHandler(mux, "server")
-return i.HTTPServer.Serve(ctx, handler) // 与服务组件直接组合
+// Init 中注册经 otelhttp 包装的 handler
+i.Listener.Handler(otelhttp.NewHandler(mux, "server"))
 ```
 
 ## 命令行工具
@@ -465,7 +456,7 @@ go test ./examples/http/ -stress -run Stress
 ├── runtime/         # codegen 注册表 / logger / version
 ├── weaver.go        # 公共 API:Run / Implements / Ref / WithConfig
 ├── listener.go      # Listener 聚合服务组件:自动注入配置与 Handler
-├── server.go        # 服务组件:HTTPServer / TCPServer / UDPServer
+├── server.go        # Listener 内部服务端:HTTP / TCP / UDP 托管实现(非导出)
 └── widget.go        # DI 容器:反射实例化、依赖装配、生命周期
 ```
 

@@ -19,7 +19,7 @@ type Handler interface {
 	UDPPacketHandler
 }
 
-// Listener 聚合服务组件:内部持有 HTTPServer/TCPServer/UDPServer 之一,
+// Listener 聚合服务组件:内部持有 httpServer/tcpServer/udpServer 之一,
 // 通过 conf tag 注入配置,启动阶段自动 Serve,无需 Start。
 //
 // 单协议组件声明 Listener[weaver.Handler] 自动探测;组件实现多个 handler
@@ -38,7 +38,7 @@ type Handler interface {
 //  3. 组件自身实现的 ServeHTTP。
 type Listener[H any] struct {
 	mu      sync.RWMutex
-	server  any          // *HTTPServer / *TCPServer / *UDPServer,init 时创建
+	server  any          // *httpServer / *tcpServer / *udpServer,init 时创建
 	handler http.Handler // Handler/Mux 注册的外部 HTTP handler,优先于组件自身
 
 	armed bool // 配置注入成功后为 true,start 阶段仅自动启动已就绪的 listener
@@ -84,11 +84,11 @@ func handlerProtocols(t reflect.Type) []reflect.Type {
 func newListenerServer(t reflect.Type) any {
 	switch t {
 	case httpHandlerType:
-		return new(HTTPServer)
+		return new(httpServer)
 	case tcpHandlerType:
-		return new(TCPServer)
+		return new(tcpServer)
 	case udpHandlerType:
-		return new(UDPServer)
+		return new(udpServer)
 	}
 	return nil
 }
@@ -140,11 +140,11 @@ func (l *Listener[H]) enabled() bool {
 // confType 返回内部服务端的配置类型,供 widget 构造注入目标。
 func (l *Listener[H]) confType() reflect.Type {
 	switch l.server.(type) {
-	case *HTTPServer:
+	case *httpServer:
 		return reflect.TypeFor[HTTPOption]()
-	case *TCPServer:
+	case *tcpServer:
 		return reflect.TypeFor[TCPOption]()
-	case *UDPServer:
+	case *udpServer:
 		return reflect.TypeFor[UDPOption]()
 	}
 	return nil
@@ -153,12 +153,12 @@ func (l *Listener[H]) confType() reflect.Type {
 // setConf 整体替换内部服务端配置,由 widget 在配置注入/热更新时调用。
 func (l *Listener[H]) setConf(v any) {
 	switch s := l.server.(type) {
-	case *HTTPServer:
-		s.SetConfig(v.(HTTPOption))
-	case *TCPServer:
-		s.SetConfig(v.(TCPOption))
-	case *UDPServer:
-		s.SetConfig(v.(UDPOption))
+	case *httpServer:
+		s.setConfig(v.(HTTPOption))
+	case *tcpServer:
+		s.setConfig(v.(TCPOption))
+	case *udpServer:
+		s.setConfig(v.(UDPOption))
 	}
 }
 
@@ -172,11 +172,11 @@ func (l *Listener[H]) arm() {
 // protocol 返回绑定的协议名("http"/"tcp"/"udp"),未初始化返回 ""。
 func (l *Listener[H]) protocol() string {
 	switch l.server.(type) {
-	case *HTTPServer:
+	case *httpServer:
 		return "http"
-	case *TCPServer:
+	case *tcpServer:
 		return "tcp"
-	case *UDPServer:
+	case *udpServer:
 		return "udp"
 	}
 	return ""
@@ -187,11 +187,11 @@ func (l *Listener[H]) setLog(log *slog.Logger) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	switch s := l.server.(type) {
-	case *HTTPServer:
+	case *httpServer:
 		s.setLog(log)
-	case *TCPServer:
+	case *tcpServer:
 		s.setLog(log)
-	case *UDPServer:
+	case *udpServer:
 		s.setLog(log)
 	}
 }
@@ -200,7 +200,7 @@ func (l *Listener[H]) setLog(log *slog.Logger) {
 // 服务端;ctx 结束后优雅关闭。
 func (l *Listener[H]) serve(ctx context.Context, impl any) error {
 	switch s := l.server.(type) {
-	case *HTTPServer:
+	case *httpServer:
 		l.mu.RLock()
 		handler := l.handler
 		l.mu.RUnlock()
@@ -211,11 +211,11 @@ func (l *Listener[H]) serve(ctx context.Context, impl any) error {
 			}
 			handler = h
 		}
-		return s.Serve(ctx, handler)
-	case *TCPServer:
-		return s.Serve(ctx, impl.(TCPHandler))
-	case *UDPServer:
-		return s.Serve(ctx, impl.(UDPPacketHandler))
+		return s.serve(ctx, handler)
+	case *tcpServer:
+		return s.serve(ctx, impl.(TCPHandler))
+	case *udpServer:
+		return s.serve(ctx, impl.(UDPPacketHandler))
 	}
 	return errors.New("listener: 服务端未初始化")
 }
@@ -228,12 +228,12 @@ func (l *Listener[H]) Config() any {
 	defer l.mu.RUnlock()
 
 	switch s := l.server.(type) {
-	case *HTTPServer:
-		return s.Config()
-	case *TCPServer:
-		return s.Config()
-	case *UDPServer:
-		return s.Config()
+	case *httpServer:
+		return s.config()
+	case *tcpServer:
+		return s.config()
+	case *udpServer:
+		return s.config()
 	}
 	return nil
 }
@@ -241,26 +241,26 @@ func (l *Listener[H]) Config() any {
 // Addr 返回绑定后的实际监听地址,未初始化或未在服务中时返回 ""。
 func (l *Listener[H]) Addr() string {
 	switch s := l.server.(type) {
-	case *HTTPServer:
-		return s.Addr()
-	case *TCPServer:
-		return s.Addr()
-	case *UDPServer:
-		return s.Addr()
+	case *httpServer:
+		return s.addr()
+	case *tcpServer:
+		return s.addr()
+	case *udpServer:
+		return s.addr()
 	}
 	return ""
 }
 
-func (l *Listener[H]) tcpServer() (*TCPServer, error) {
-	s, ok := l.server.(*TCPServer)
+func (l *Listener[H]) tcpServer() (*tcpServer, error) {
+	s, ok := l.server.(*tcpServer)
 	if !ok {
 		return nil, errors.New("listener: 未绑定 tcp 服务")
 	}
 	return s, nil
 }
 
-func (l *Listener[H]) udpServer() (*UDPServer, error) {
-	s, ok := l.server.(*UDPServer)
+func (l *Listener[H]) udpServer() (*udpServer, error) {
+	s, ok := l.server.(*udpServer)
 	if !ok {
 		return nil, errors.New("listener: 未绑定 udp 服务")
 	}
@@ -273,7 +273,7 @@ func (l *Listener[H]) Sessions() []TCPSession {
 	if err != nil {
 		return nil
 	}
-	return s.Sessions()
+	return s.sessions()
 }
 
 // Send 向指定 TCP 会话定点发送数据,与 handler 并发写安全。
@@ -282,7 +282,7 @@ func (l *Listener[H]) Send(id uint64, data []byte) error {
 	if err != nil {
 		return err
 	}
-	return s.Send(id, data)
+	return s.send(id, data)
 }
 
 // CloseConn 主动断开指定 TCP 会话。
@@ -291,7 +291,7 @@ func (l *Listener[H]) CloseConn(id uint64) error {
 	if err != nil {
 		return err
 	}
-	return s.CloseConn(id)
+	return s.closeConn(id)
 }
 
 // Peers 返回活跃 UDP 对端快照;非 udp 绑定时返回 nil(错误语义见 SendTo)。
@@ -300,7 +300,7 @@ func (l *Listener[H]) Peers() []UDPPeer {
 	if err != nil {
 		return nil
 	}
-	return s.Peers()
+	return s.peers()
 }
 
 // SendTo 向指定 UDP 对端定点发送报文。
@@ -309,7 +309,7 @@ func (l *Listener[H]) SendTo(addr net.Addr, data []byte) error {
 	if err != nil {
 		return err
 	}
-	return s.SendTo(addr, data)
+	return s.sendTo(addr, data)
 }
 
 var _ listenerAPI = (*Listener[Handler])(nil)

@@ -31,7 +31,7 @@ go run . -conf etc/weaver.yaml
 
 ## http — HTTP/TCP/UDP 服务与配置热更新
 
-单进程同时运行三个服务，演示服务组件（`weaver.HTTPServer` / `TCPServer` / `UDPServer`）与配置热更新：
+单进程同时运行三个服务，演示 `weaver.Listener[H]` 服务组件（HTTP/TCP/UDP 三协议）与配置热更新：
 
 - `main.go`：主应用，引用三个服务组件
 - `server/`：HTTP 服务，响应内容随配置热更新实时变化
@@ -49,7 +49,7 @@ printf 'ping\n' | nc -u localhost 8082   # UDP echo: PING
 curl localhost:8080                      # hello v2
 ```
 
-详见[服务组件](/guide/servers)。
+详见 [Listener:HTTP / TCP / UDP 服务托管](/guide/listener)。
 
 ## echo — Listener 三协议示例
 
@@ -79,7 +79,7 @@ go test ./...   # 协议解析单测
 go run . -conf weaver.yaml
 ```
 
-详见 [Listener:自动注入配置与 Handler](/guide/listener)。
+详见 [Listener:HTTP / TCP / UDP 服务托管](/guide/listener)。
 
 ## template — 项目模板
 
@@ -92,4 +92,4 @@ go run . -conf weaver.yaml
 
 - [快速开始](/guide/getting-started)
 - [核心概念：组件与依赖注入](/guide/concepts)
-- [Listener:自动注入配置与 Handler](/guide/listener)
+- [Listener:HTTP / TCP / UDP 服务托管](/guide/listener)

@@ -1,6 +1,6 @@
-# Listener:自动注入配置与 Handler
+# Listener:HTTP / TCP / UDP 服务托管
 
-`weaver.Listener[H]` 把"内嵌服务组件 + `Start` 中手动 `Serve`"收敛为一个泛型内嵌字段:组件实现 `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler` 任意一个并内嵌 Listener,框架即自动注入配置并以组件自身为 handler 启动服务——**无需编写 `Start`**。
+`weaver.Listener[H]` 把网络服务的声明、配置注入与生命周期管理收敛为一个泛型内嵌字段:组件实现 `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler` 任意一个并内嵌 Listener,框架即自动注入配置、启动服务并托管优雅关闭——**无需编写 `Start`**。
 
 ```go
 type echo struct {
@@ -75,7 +75,15 @@ func (g *gateway) ServeTCP(ctx context.Context, conn net.Conn) { ... }
 func (g *gateway) ServeUDP(ctx context.Context, pkt weaver.UDPPacket) ([]byte, error) { ... }
 ```
 
-三种服务并行启动、独立配置、独立优雅关闭。
+三种服务并行启动、独立配置、独立优雅关闭。注意:**同一组件同一协议只能声明一个 Listener**(装配时校验),同协议的多实例请拆分到多个组件。
+
+## 优雅关闭
+
+ctx 结束(应用退出或收到信号)后,各协议的关闭语义:
+
+- **HTTP**:按 `shutdownTimeout` 停止接收新请求并等待处理中的请求完成;监听失败(如端口占用)会中止应用启动并报错;
+- **TCP**:停止 accept、逐个关闭活跃连接(解除 handler 的读阻塞)并限时等待全部退出;
+- **UDP**:关闭读循环,限时等待处理中的报文完成。
 
 ## TCP 会话管理与定点推送
 
@@ -129,9 +137,47 @@ tcp:
 
 配合事件回调可实现"上线/离线"语义的完整闭环:纯接收客户端只要推送持续成功就不会被误踢;完全静默的连接在超时后被回收并触发 `OnDisconnect`。
 
+## 安全配置
+
+v0.1.3 起内置生产级防护，**零配置即默认生效**；所有选项均可通过 `conf` 段调整，显式设为负值/`<=0` 可关闭对应限制。
+
+### handler panic 隔离
+
+TCP 连接与 UDP 报文的处理 goroutine 由框架统一 recover：业务 handler panic 只记录 ERROR 日志（含对端地址）并关闭该连接/丢弃该包，**不会击穿进程**，服务继续运行。
+
+### HTTP 超时与请求头上限（防 slowloris 慢速攻击）
+
+```yaml
+api:
+  addr: ":8080"
+  readTimeout: 30s         # 整个请求读取超时,缺省 30s
+  readHeaderTimeout: 10s   # 请求头读取超时,缺省 10s,slowloris 主防线
+  writeTimeout: 30s        # 响应写出超时,缺省 30s;长连接流式响应(SSE 等)需显式设为 -1s 关闭
+  idleTimeout: 120s        # keep-alive 空闲超时,缺省 120s
+  maxHeaderBytes: 1048576  # 请求头大小上限,缺省 1MB
+```
+
+### TCP 连接数与空闲超时
+
+```yaml
+tcp:
+  addr: ":8081"
+  maxConns: 1000           # 最大并发连接数,超过立即拒绝;<=0 不限(缺省)
+  connIdleTimeout: 300s    # 空闲超时,每次收发自动续期,活跃连接不受影响;<=0 不限(缺省)
+  activeTimeout: 60s       # 活跃超时,收发双向成功操作均刷新;超时由后台清扫踢除并触发 OnDisconnect;缺省 60s,负值关闭
+```
+
+### UDP 报文处理并发上限
+
+```yaml
+udp:
+  addr: ":8082"
+  maxConcurrent: 512       # 单包处理最大并发数,超限丢弃报文并告警;<=0 不限(缺省)
+```
+
 ## 配置与热更新
 
-Listener 的配置项与对应服务组件完全一致(`HTTPOption` / `TCPOption` / `UDPOption`,含[安全防护](/guide/servers#安全配置)各选项),`conf` 标签挂在 Listener 字段上注入;业务配置可内嵌 `WithConfig` 共用同一 key。配置文件变更时自动重新注入,但 `addr` 在启动时读取,修改监听地址仍需重启。
+Listener 的配置项为 `HTTPOption` / `TCPOption` / `UDPOption`(含[安全配置](#安全配置)各选项),`conf` 标签挂在 Listener 字段上注入;业务配置可内嵌 `WithConfig` 共用同一 key。配置文件变更时自动重新注入,但 `addr` 在启动时读取,修改监听地址仍需重启。
 
 组件内可通过 `Config()` 读取注入的服务配置（热更新后返回最新值），返回值类型与绑定协议对应，经类型断言取用：
 
@@ -153,14 +199,26 @@ TCP handler 收到的是字节流,私有协议需自行分帧;UDP 按 datagram �
 | `examples/echo/udp` | UDP Listener + 对端管理 |
 | `examples/echo/all` | 三协议网关同跑 |
 | `examples/protocol` | SOCKS5 私有协议分帧解析(含单测) |
+| `examples/http` | HTTP/TCP/UDP 三服务同跑 + 配置热更新 |
 
 ```bash
 cd examples/echo/all
 go run . -conf weaver.yaml
 ```
 
+`examples/http` 演示配置热更新:修改 `etc/weaver.yaml` 中 `http.message` 后无需重启,HTTP 响应立即变化:
+
+```bash
+cd examples/http
+go run . -conf etc/weaver.yaml
+curl localhost:8080        # hello v1
+# 修改 etc/weaver.yaml 中 http.message 后无需重启
+curl localhost:8080        # hello v2
+printf 'ping\n' | nc localhost 8081      # TCP echo
+printf 'ping\n' | nc -u localhost 8082   # UDP echo
+```
+
 ## 相关阅读
 
-- [服务组件:HTTP / TCP / UDP](/guide/servers)
 - [配置管理](/guide/config)
 - [生命周期管理](/guide/lifecycle)

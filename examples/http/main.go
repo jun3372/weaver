@@ -16,8 +16,8 @@ type option struct {
 type app struct {
 	weaver.Implements[weaver.Main]
 	weaver.Ref[server.T]
-	tcp weaver.Ref[tcp.T]
-	udp weaver.Ref[udp.T]
+	tcp                       weaver.Ref[tcp.T]
+	udp                       weaver.Ref[udp.T]
 	weaver.WithConfig[option] `conf:"app"`
 }
 

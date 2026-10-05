@@ -14,20 +14,30 @@ Weaver 组件支持以下生命周期钩子，全部为可选实现：
 
 ## Start
 
-实现了 `Start` 的组件会在 `weaver.Run` 启动主逻辑前**并发**启动：
+实现了 `Start` 的组件会在 `weaver.Run` 启动主逻辑前**并发**启动。适合长驻的后台任务：
 
 ```go
-func (s *serverImpl) Start(ctx context.Context) error {
-    s.Logger(ctx).Info("Starting HTTP server")
-    return s.server.ListenAndServe()
+func (s *worker) Start(ctx context.Context) error {
+    t := time.NewTicker(time.Second)
+    defer t.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return nil // ctx 结束,任务退出
+        case <-t.C:
+            s.Logger(ctx).Info("tick")
+        }
+    }
 }
 ```
+
+> 网络服务(HTTP/TCP/UDP)无需编写 `Start`：内嵌 `weaver.Listener[H]` 即可由框架自动托管,见[Listener](/guide/listener)。
 
 Start 阶段的行为：
 
 - 所有组件并发启动，全部 Start 已启动后 `weaver.Run` 才进入主逻辑（不阻塞长驻的 Start）
 - Start 同步快速失败会中止应用启动并返回错误；异步失败与 panic 会触发整体退出
-- 长驻服务应阻塞在 `Start` 内（或使用服务组件的 `Serve`，见[服务组件](/guide/servers)）
+- 长驻服务应阻塞在 `Start` 内（或使用 `weaver.Listener[H]` 自动托管，见[Listener](/guide/listener)）
 
 ## Shutdown
 
@@ -62,7 +72,7 @@ func (a *app) Init(ctx context.Context) error {
 ## 完整流程
 
 ```text
-weaver.Run
+weaver.Run / weaver.RunComponent
  ├─ 解析 -conf / -version 参数
  ├─ 加载配置文件
  ├─ 实例化 Main 组件（级联实例化其依赖）
@@ -70,3 +80,5 @@ weaver.Run
  ├─ 执行主逻辑 app(ctx, main)
  └─ 退出时统一调用所有组件的 Shutdown
 ```
+
+`weaver.RunComponent(ctx, (*app)(nil))` 是 `weaver.Run` 的简写形式：启动流程完全一致，只是把主逻辑固定为"等待退出信号"（收到 `SIGINT`/`SIGQUIT`/`SIGTERM` 或组件调用 `Exec()` 后优雅关闭，返回 `nil`）。第二个参数仅用于类型推断。
