@@ -18,7 +18,7 @@ import (
 // 服务组件默认优雅关闭等待时间。
 const defaultShutdownTimeout = 5 * time.Second
 
-// HTTPServer 超时与请求头默认值;零值字段取默认,显式负值关闭对应超时。
+// httpServer 超时与请求头默认值;零值字段取默认,显式负值关闭对应超时。
 const (
 	defaultReadTimeout       = 30 * time.Second
 	defaultReadHeaderTimeout = 10 * time.Second
@@ -49,7 +49,7 @@ func maxHeaderBytesOr(v int) int {
 	return v
 }
 
-// HTTPOption 是 HTTPServer 的配置项,通过 conf tag 注入。
+// HTTPOption 是 httpServer 的配置项,通过 conf tag 注入。
 type HTTPOption struct {
 	Addr            string        // 监听地址,如 ":8080";Serve 时读取,修改需重启
 	ShutdownTimeout time.Duration // 优雅关闭等待时间,缺省 5s
@@ -61,7 +61,7 @@ type HTTPOption struct {
 	MaxHeaderBytes    int           // 请求头大小上限,缺省 1MB
 }
 
-// TCPOption 是 TCPServer 的配置项,通过 conf tag 注入。
+// TCPOption 是 tcpServer 的配置项,通过 conf tag 注入。
 type TCPOption struct {
 	Addr            string
 	ShutdownTimeout time.Duration
@@ -73,7 +73,7 @@ type TCPOption struct {
 	ActiveTimeout time.Duration
 }
 
-// UDPOption 是 UDPServer 的配置项,通过 conf tag 注入。
+// UDPOption 是 udpServer 的配置项,通过 conf tag 注入。
 type UDPOption struct {
 	Addr            string
 	ShutdownTimeout time.Duration
@@ -138,35 +138,35 @@ func serverLog(l *slog.Logger) *slog.Logger {
 	return slog.Default()
 }
 
-// HTTPServer 内嵌于组件,提供声明式 HTTP 服务:配置注入监听地址,Serve 挂载
-// handler 并长驻阻塞,ctx 结束后优雅关闭。同一组件可声明多个具名实例。
-type HTTPServer struct {
-	mu     sync.RWMutex
-	config HTTPOption
-	log    *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
+// httpServer 是 Listener 的 HTTP 内部服务端:配置注入监听地址,serve 挂载
+// handler 并长驻阻塞,ctx 结束后优雅关闭。由 Listener[H] 持有,不对外导出。
+type httpServer struct {
+	mu  sync.RWMutex
+	opt HTTPOption
+	log *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
 
 	srv *http.Server
 	ln  net.Listener
 }
 
 // setLog 注入框架初始化的组件 logger,由 widget 在装配阶段调用。
-func (s *HTTPServer) setLog(log *slog.Logger) { s.log = log }
+func (s *httpServer) setLog(log *slog.Logger) { s.log = log }
 
-func (s *HTTPServer) Config() HTTPOption {
+func (s *httpServer) config() HTTPOption {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.config
+	return s.opt
 }
 
 // SetConfig 整体替换配置,由框架在配置注入/热更新时通过反射调用。
-func (s *HTTPServer) SetConfig(v HTTPOption) {
+func (s *httpServer) setConfig(v HTTPOption) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.config = v
+	s.opt = v
 }
 
 // Addr 返回绑定后的实际监听地址(如 ":0" 场景),未在服务中时返回 ""。
-func (s *HTTPServer) Addr() string {
+func (s *httpServer) addr() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.ln == nil {
@@ -177,8 +177,8 @@ func (s *HTTPServer) Addr() string {
 
 // Serve 在配置的地址上挂载 handler 并长驻阻塞;
 // ctx 结束后按 ShutdownTimeout 优雅关闭,完成后返回 nil。
-func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
-	opt := s.Config()
+func (s *httpServer) serve(ctx context.Context, h http.Handler) error {
+	opt := s.config()
 	if opt.Addr == "" {
 		return errors.New("http server: 未配置监听地址,请检查组件的 conf tag")
 	}
@@ -242,12 +242,13 @@ func (s *HTTPServer) Serve(ctx context.Context, h http.Handler) error {
 	return nil
 }
 
-// TCPServer 内嵌于组件,提供声明式 TCP 服务:accept 循环、连接管理与优雅关闭
-// 由框架负责,用户只需实现 TCPHandler;支持会话枚举与定点发送(Sessions/Send/CloseConn)。
-type TCPServer struct {
-	mu     sync.RWMutex
-	config TCPOption
-	log    *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
+// tcpServer 是 Listener 的 TCP 内部服务端:accept 循环、连接管理与优雅关闭
+// 由框架负责,用户只需实现 TCPHandler;支持会话枚举与定点发送,经 Listener
+// 的 Sessions/Send/CloseConn 使用。
+type tcpServer struct {
+	mu  sync.RWMutex
+	opt TCPOption
+	log *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
 
 	ln     net.Listener
 	nextID uint64
@@ -256,23 +257,23 @@ type TCPServer struct {
 }
 
 // setLog 注入框架初始化的组件 logger,由 widget 在装配阶段调用。
-func (s *TCPServer) setLog(log *slog.Logger) { s.log = log }
+func (s *tcpServer) setLog(log *slog.Logger) { s.log = log }
 
-func (s *TCPServer) Config() TCPOption {
+func (s *tcpServer) config() TCPOption {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.config
+	return s.opt
 }
 
 // SetConfig 整体替换配置,由框架在配置注入/热更新时通过反射调用。
-func (s *TCPServer) SetConfig(v TCPOption) {
+func (s *tcpServer) setConfig(v TCPOption) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.config = v
+	s.opt = v
 }
 
 // Addr 返回绑定后的实际监听地址,未在服务中时返回 ""。
-func (s *TCPServer) Addr() string {
+func (s *tcpServer) addr() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.ln == nil {
@@ -283,8 +284,8 @@ func (s *TCPServer) Addr() string {
 
 // Serve 在配置的地址上开始 accept 并长驻阻塞;每个连接由独立 goroutine 调用
 // handler。ctx 结束后停止 accept、关闭全部连接并限时等待退出。
-func (s *TCPServer) Serve(ctx context.Context, h TCPHandler) error {
-	opt := s.Config()
+func (s *tcpServer) serve(ctx context.Context, h TCPHandler) error {
+	opt := s.config()
 	if opt.Addr == "" {
 		return errors.New("tcp server: 未配置监听地址,请检查组件的 conf tag")
 	}
@@ -433,7 +434,7 @@ func (c *tcpConn) Write(p []byte) (int, error) {
 }
 
 // reapIdle 定期关闭活跃超时的连接;handler 将因读错误退出并自行注销会话。
-func (s *TCPServer) reapIdle(ctx context.Context, active time.Duration, log *slog.Logger) {
+func (s *tcpServer) reapIdle(ctx context.Context, active time.Duration, log *slog.Logger) {
 	interval := active / 4
 	if interval < 100*time.Millisecond {
 		interval = 100 * time.Millisecond
@@ -466,7 +467,7 @@ func (s *TCPServer) reapIdle(ctx context.Context, active time.Duration, log *slo
 }
 
 // Sessions 返回活跃会话快照,按 ID 升序。
-func (s *TCPServer) Sessions() []TCPSession {
+func (s *tcpServer) sessions() []TCPSession {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]TCPSession, 0, len(s.conns))
@@ -483,7 +484,7 @@ func (s *TCPServer) Sessions() []TCPSession {
 }
 
 // Send 向指定会话写入数据;连接级写锁保证与 handler 的写入互斥。
-func (s *TCPServer) Send(id uint64, data []byte) error {
+func (s *tcpServer) send(id uint64, data []byte) error {
 	s.mu.RLock()
 	c := s.conns[id]
 	s.mu.RUnlock()
@@ -495,7 +496,7 @@ func (s *TCPServer) Send(id uint64, data []byte) error {
 }
 
 // CloseConn 主动断开指定会话;handler 将收到读取错误并退出。
-func (s *TCPServer) CloseConn(id uint64) error {
+func (s *tcpServer) closeConn(id uint64) error {
 	s.mu.RLock()
 	c := s.conns[id]
 	s.mu.RUnlock()
@@ -506,7 +507,7 @@ func (s *TCPServer) CloseConn(id uint64) error {
 }
 
 // waitConns 关闭全部活跃连接以解除 handler 阻塞,并限时等待其退出。
-func (s *TCPServer) waitConns(wg *sync.WaitGroup, timeout time.Duration, log *slog.Logger) {
+func (s *tcpServer) waitConns(wg *sync.WaitGroup, timeout time.Duration, log *slog.Logger) {
 	s.mu.RLock()
 	for _, c := range s.conns {
 		_ = c.Close()
@@ -528,20 +529,20 @@ func (s *TCPServer) waitConns(wg *sync.WaitGroup, timeout time.Duration, log *sl
 	}
 }
 
-// UDPServer 内嵌于组件,提供声明式 UDP 服务:读循环、派发与回包由框架负责,
-// 用户只需实现 UDPPacketHandler;支持对端表与定点发送(Peers/SendTo)。
-type UDPServer struct {
-	mu     sync.RWMutex
-	config UDPOption
-	log    *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
+// udpServer 是 Listener 的 UDP 内部服务端:读循环、派发与回包由框架负责,
+// 用户只需实现 UDPPacketHandler;对端表与定点发送经 Listener 的 Peers/SendTo 使用。
+type udpServer struct {
+	mu  sync.RWMutex
+	opt UDPOption
+	log *slog.Logger // 框架注入的组件 logger,未注入时回退 slog.Default()
 
-	conn   net.PacketConn
-	peers  map[string]*udpPeer
-	served bool
+	conn      net.PacketConn
+	peerTable map[string]*udpPeer
+	served    bool
 }
 
 // setLog 注入框架初始化的组件 logger,由 widget 在装配阶段调用。
-func (s *UDPServer) setLog(log *slog.Logger) { s.log = log }
+func (s *udpServer) setLog(log *slog.Logger) { s.log = log }
 
 // udpPeerTTL 内未再收包的对端在下次收包时被惰性清理。
 var udpPeerTTL = 5 * time.Minute
@@ -560,27 +561,27 @@ type UDPPeer struct {
 // recordPeer 登记对端并刷新活跃时间;若该对端自身已超 TTL(清扫尚未跑到),
 // 先判定离线再作为新对端登记,保证离线/上线事件成对触发。
 // 仅做 O(1) 的单键检查,全表清理由 reapIdlePeers 负责。
-func (s *UDPServer) recordPeer(addr net.Addr) (added bool, pruned []net.Addr) {
+func (s *udpServer) recordPeer(addr net.Addr) (added bool, pruned []net.Addr) {
 	now := time.Now()
 	key := addr.String()
 
 	s.mu.Lock()
-	p, ok := s.peers[key]
+	p, ok := s.peerTable[key]
 	if ok && now.Sub(p.lastSeen) > udpPeerTTL {
-		delete(s.peers, key)
+		delete(s.peerTable, key)
 		pruned = append(pruned, p.addr)
 		ok = false
 	}
 	if !ok {
 		added = true
 	}
-	s.peers[key] = &udpPeer{addr: addr, lastSeen: now}
+	s.peerTable[key] = &udpPeer{addr: addr, lastSeen: now}
 	s.mu.Unlock()
 	return added, pruned
 }
 
 // reapIdlePeers 定期清理超过 udpPeerTTL 未活跃的静默对端并触发离线事件。
-func (s *UDPServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconnect, log *slog.Logger) {
+func (s *udpServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconnect, log *slog.Logger) {
 	interval := udpPeerTTL / 4
 	if interval < 100*time.Millisecond {
 		interval = 100 * time.Millisecond
@@ -603,25 +604,25 @@ func (s *UDPServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconn
 }
 
 // prunePeers 清理超过 udpPeerTTL 未活跃的对端,返回被清理的对端列表。
-func (s *UDPServer) prunePeers(now time.Time) []net.Addr {
+func (s *udpServer) prunePeers(now time.Time) []net.Addr {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var pruned []net.Addr
-	for k, p := range s.peers {
+	for k, p := range s.peerTable {
 		if now.Sub(p.lastSeen) > udpPeerTTL {
 			pruned = append(pruned, p.addr)
-			delete(s.peers, k)
+			delete(s.peerTable, k)
 		}
 	}
 	return pruned
 }
 
 // Peers 返回最近活跃的对端快照,按地址字符串升序。
-func (s *UDPServer) Peers() []UDPPeer {
+func (s *udpServer) peers() []UDPPeer {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]UDPPeer, 0, len(s.peers))
-	for _, p := range s.peers {
+	out := make([]UDPPeer, 0, len(s.peerTable))
+	for _, p := range s.peerTable {
 		out = append(out, UDPPeer{Addr: p.addr, LastSeen: p.lastSeen})
 	}
 	slices.SortFunc(out, func(a, b UDPPeer) int { return strings.Compare(a.Addr.String(), b.Addr.String()) })
@@ -629,7 +630,7 @@ func (s *UDPServer) Peers() []UDPPeer {
 }
 
 // SendTo 向指定对端发送报文;可在 handler 外主动推送。
-func (s *UDPServer) SendTo(addr net.Addr, data []byte) error {
+func (s *udpServer) sendTo(addr net.Addr, data []byte) error {
 	s.mu.RLock()
 	conn := s.conn
 	s.mu.RUnlock()
@@ -640,21 +641,21 @@ func (s *UDPServer) SendTo(addr net.Addr, data []byte) error {
 	return err
 }
 
-func (s *UDPServer) Config() UDPOption {
+func (s *udpServer) config() UDPOption {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.config
+	return s.opt
 }
 
 // SetConfig 整体替换配置,由框架在配置注入/热更新时通过反射调用。
-func (s *UDPServer) SetConfig(v UDPOption) {
+func (s *udpServer) setConfig(v UDPOption) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.config = v
+	s.opt = v
 }
 
 // Addr 返回绑定后的实际监听地址,未在服务中时返回 ""。
-func (s *UDPServer) Addr() string {
+func (s *udpServer) addr() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.conn == nil {
@@ -665,8 +666,8 @@ func (s *UDPServer) Addr() string {
 
 // Serve 在配置的地址上开始收包并长驻阻塞;每个报文由独立 goroutine 调用
 // handler,handler 返回的非 nil 字节作为回包发往来源地址。
-func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
-	opt := s.Config()
+func (s *udpServer) serve(ctx context.Context, h UDPPacketHandler) error {
+	opt := s.config()
 	if opt.Addr == "" {
 		return errors.New("udp server: 未配置监听地址,请检查组件的 conf tag")
 	}
@@ -677,13 +678,13 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 		return errors.New("udp server: Serve 被重复调用")
 	}
 	s.served = true
-	s.peers = make(map[string]*udpPeer)
+	s.peerTable = make(map[string]*udpPeer)
 	s.mu.Unlock()
 	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
 	defer func() {
 		s.mu.Lock()
 		s.conn = nil
-		s.peers = nil
+		s.peerTable = nil
 		s.served = false
 		s.mu.Unlock()
 	}()
@@ -777,7 +778,7 @@ func (s *UDPServer) Serve(ctx context.Context, h UDPPacketHandler) error {
 	}
 }
 
-func (s *UDPServer) waitUDP(wg *sync.WaitGroup, timeout time.Duration, log *slog.Logger) {
+func (s *udpServer) waitUDP(wg *sync.WaitGroup, timeout time.Duration, log *slog.Logger) {
 	if timeout <= 0 {
 		timeout = defaultShutdownTimeout
 	}

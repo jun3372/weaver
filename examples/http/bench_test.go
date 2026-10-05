@@ -192,14 +192,15 @@ func BenchmarkHTTP_Echo_Parallel(b *testing.B) {
 	})
 }
 
-// 配置读取微基准:WithConfig/服务组件每次读取都要走 RLock + 值拷贝。
+// 配置读取微基准:WithConfig 每次读取都要走 RLock + 值拷贝(Listener 内部
+// 同机制,已收敛不再单独导出)。
 func BenchmarkConfigRead(b *testing.B) {
-	var s weaver.HTTPServer
-	s.SetConfig(weaver.HTTPOption{Addr: ":8080"})
+	var c weaver.WithConfig[weaver.HTTPOption]
+	c.SetConfig(weaver.HTTPOption{Addr: ":8080"})
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = s.Config()
+		_ = c.Config()
 	}
 }
 

@@ -95,11 +95,11 @@ func BenchmarkTCPSessions(b *testing.B) {
 	}
 }
 
-// benchPrimePeers 构造一个带 n 个对端的 UDPServer。
-func benchPrimePeers(b *testing.B, n int, stale bool) *UDPServer {
+// benchPrimePeers 构造一个带 n 个对端的 udpServer。
+func benchPrimePeers(b *testing.B, n int, stale bool) *udpServer {
 	b.Helper()
-	var s UDPServer
-	s.peers = make(map[string]*udpPeer, n)
+	var s udpServer
+	s.peerTable = make(map[string]*udpPeer, n)
 	lastSeen := time.Now()
 	if stale {
 		lastSeen = lastSeen.Add(-2 * udpPeerTTL)
@@ -107,7 +107,7 @@ func benchPrimePeers(b *testing.B, n int, stale bool) *UDPServer {
 	for i := 0; i < n; i++ {
 		a := benchAddr("192.0.2.1:10000")
 		p := &udpPeer{addr: a, lastSeen: lastSeen}
-		s.peers[a.String()] = p
+		s.peerTable[a.String()] = p
 	}
 	return &s
 }
@@ -132,11 +132,11 @@ func BenchmarkUDPPeerPrune(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		s.peers = make(map[string]*udpPeer, 1000)
+		s.peerTable = make(map[string]*udpPeer, 1000)
 		lastSeen := now.Add(-2 * udpPeerTTL)
 		for j := 0; j < 1000; j++ {
 			a := benchAddr("192.0.2.1:10000")
-			s.peers[a.String()] = &udpPeer{addr: a, lastSeen: lastSeen}
+			s.peerTable[a.String()] = &udpPeer{addr: a, lastSeen: lastSeen}
 		}
 		b.StartTimer()
 		s.prunePeers(now)

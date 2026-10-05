@@ -185,11 +185,10 @@ func (w *widget) deregister(name string) {
 }
 
 // isConfigManagedType 判断字段类型是否为框架托管配置的类型:
-// WithConfig[T] 及 HTTPServer/TCPServer/UDPServer 服务组件,
-// 它们均具备 unexported config 字段与 SetConfig 方法,共用注入链路。
+// WithConfig[T] 组件,具备 unexported config 字段与 SetConfig 方法,共用注入链路。
+// (HTTP/TCP/UDP 服务已收敛为 Listener[H],其配置注入由 initListener 单独处理。)
 func isConfigManagedType(name string) bool {
-	return strings.HasPrefix(name, "WithConfig[") ||
-		name == "HTTPServer" || name == "TCPServer" || name == "UDPServer"
+	return strings.HasPrefix(name, "WithConfig[")
 }
 
 // fieldConfTag 读取字段的配置依赖标签(conf/weaver/config)。
@@ -246,9 +245,10 @@ func listeners(impl any) ([]listenerAPI, error) {
 }
 
 // WithConfig 遍历组件字段完成装配:
-// - Listener 字段:以组件自身 init 出对应服务端,并按 conf tag 注入配置、注册热更新;
-// - WithConfig/服务组件字段:沿用既有 SetConfig 注入链路;
-// - 服务组件与 Listener 字段同步注入组件 logger,框架内部日志统一走已初始化的 logger。
+//   - Listener 字段:以组件自身 init 出对应服务端,并按 conf tag 注入配置、注册热更新;
+//   - WithConfig 字段:沿用既有 SetConfig 注入链路(HTTP/TCP/UDP 服务已收敛为
+//     Listener,其 logger 与配置注入由 initListener 单独处理);
+//
 // conf 为 nil 时仍装配 Listener(跳过配置注入,listener 保持未就绪)。
 func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
@@ -275,12 +275,6 @@ func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 
 		if !isConfigManagedType(f.Type.Name()) {
 			continue
-		}
-
-		// 服务组件字段注入组件 logger(WithConfig[T] 无 setLog,断言失败即跳过)
-		fp := reflect.NewAt(f.Type, s.Field(i).Addr().UnsafePointer()).Interface()
-		if sv, ok := fp.(interface{ setLog(_ *slog.Logger) }); ok {
-			sv.setLog(log)
 		}
 
 		key := fieldConfTag(f)

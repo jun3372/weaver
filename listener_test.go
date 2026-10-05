@@ -864,17 +864,11 @@ func TestListenerWrongProtocolManagement(t *testing.T) {
 
 // ---- logger 注入 ----
 
-// directSrvComp 直接内嵌服务组件字段(非 Listener)。
-type directSrvComp struct {
-	Implements[listenerIntf]
-	Srv HTTPServer `conf:"listener"`
-}
-
-func TestServerComponentsUseInjectedLogger(t *testing.T) {
+func TestListenerUsesInjectedLogger(t *testing.T) {
 	_, cancel, w := newListenerWidget(t, "listener:\n  addr: \"127.0.0.1:0\"\n",
-		listenerReg(t, &httpEchoComp{}), listenerReg(t, &directSrvComp{}))
+		listenerReg(t, &httpEchoComp{}))
 
-	readLog := func(srv *HTTPServer) *slog.Logger {
+	readLog := func(srv *httpServer) *slog.Logger {
 		t.Helper()
 		f := reflect.ValueOf(srv).Elem().FieldByName("log")
 		return reflect.NewAt(f.Type(), f.Addr().UnsafePointer()).Elem().Interface().(*slog.Logger)
@@ -886,19 +880,9 @@ func TestServerComponentsUseInjectedLogger(t *testing.T) {
 	}
 	lf := reflect.ValueOf(c).Elem().FieldByName("Listener")
 	lsrv := reflect.NewAt(lf.Type(), lf.Addr().UnsafePointer()).Elem().FieldByName("server")
-	inner := reflect.NewAt(lsrv.Type(), lsrv.Addr().UnsafePointer()).Elem().Interface().(*HTTPServer)
+	inner := reflect.NewAt(lsrv.Type(), lsrv.Addr().UnsafePointer()).Elem().Interface().(*httpServer)
 	if got := readLog(inner); got != w.log {
 		t.Fatal("Listener 内部服务端未注入框架 logger")
-	}
-
-	c2, err := w.getImpl(reflect.TypeFor[directSrvComp]())
-	if err != nil {
-		t.Fatalf("create component: %v", err)
-	}
-	f2 := reflect.ValueOf(c2).Elem().FieldByName("Srv")
-	srv := reflect.NewAt(f2.Type(), f2.Addr().UnsafePointer()).Interface().(*HTTPServer)
-	if got := readLog(srv); got != w.log {
-		t.Fatal("服务组件字段未注入框架 logger")
 	}
 
 	cancel()
