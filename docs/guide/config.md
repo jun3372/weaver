@@ -66,7 +66,7 @@ Weaver 通过 Viper 的 `WatchConfig` 监听配置文件变更：
 - 配置文件发生变化时，所有已注册的组件配置会自动重新加载（重新执行 `UnmarshalKey`），**无需重启进程、服务不中断**。
 - 配置是否"生效"取决于使用方式：每次请求/调用时读取 `Config()` 的字段立即生效；仅在启动时读取一次的字段（如 Listener 的监听地址 `Addr`）需要重启进程才会应用新值。
 
-这意味着修改 `weaver.yaml` 保存后，无需重启应用即可让新配置生效（前提是以 `-conf` 指定了配置文件路径）。
+这意味着修改 `weaver.yaml` 保存后，无需重启应用即可让新配置生效（前提是配置文件已通过 `-conf` 指定或被自动发现）。
 
 ## 指定配置文件
 
@@ -78,4 +78,4 @@ go run main.go -conf weaver.yaml
 SERVICE_CONFIG=weaver.yaml go run main.go
 ```
 
-未指定配置文件时，`WithConfig` 不会注入任何值。
+未指定时，框架会自动查找配置文件：依次搜索工作目录和程序可执行文件所在目录，匹配 `weaver` 或 `config` 文件名（同目录内 `weaver` 优先），扩展名按 `yaml → yml → toml → json` 探测。找到后加载该文件并打一条 Info 日志；都未找到时 `WithConfig` 不会注入任何值（仅打一条提示日志，不影响启动）。

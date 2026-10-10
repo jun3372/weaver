@@ -3,8 +3,8 @@ app:
   Version: "0.0.1"
 
 wechat:
-  AppID: "wx1234567890abcdef"
-  AppSecret: "abcdef1234567890abcdef"
+  AppID: ""
+  AppSecret: ""
   Version: "0.0.1"
 
 weaver:

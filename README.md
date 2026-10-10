@@ -139,7 +139,7 @@ weaver:
 # 组件接口变更后必须重新生成
 weaver generate .
 
-# 运行(-conf 指定配置文件,也可通过 SERVICE_CONFIG 环境变量指定)
+# 运行(-conf 指定配置文件,也可通过 SERVICE_CONFIG 环境变量指定;未指定时自动在工作目录/程序目录查找 weaver.*/config.*)
 go run . -conf weaver.yaml
 ```
 
@@ -415,7 +415,7 @@ weaver generate [packages]     # 生成组件注册代码 weaver_gen.go(接口�
 weaver version                 # 版本信息(自动回退:ldflags → 模块版本 → VCS 戳记)
 ```
 
-应用通用标志：`-conf <file>` 指定配置文件（或 `SERVICE_CONFIG` 环境变量）；`-version`（或 `SERVICE_VERSION=true`）打印版本信息。
+应用通用标志：`-conf <file>` 指定配置文件（或 `SERVICE_CONFIG` 环境变量）；两者均未指定时自动在工作目录及程序目录下查找 `weaver.*` / `config.*`（yaml/yml/toml/json），未找到则不加载配置。`-version`（或 `SERVICE_VERSION=true`）打印版本信息。
 
 代码中也可使用 go:generate：
 

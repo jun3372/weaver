@@ -125,7 +125,7 @@ curl localhost:8080        # Hello, Weaver!
 
 | Flag | Environment Variable | Description |
 | --- | --- | --- |
-| `-conf` | `SERVICE_CONFIG` | Config file path; nothing is loaded when omitted |
+| `-conf` | `SERVICE_CONFIG` | Config file path; when omitted, `weaver.*` / `config.*` (yaml/yml/toml/json) is auto-discovered in the working directory and then the executable directory. If nothing is found, no config is loaded |
 | `-version` | `SERVICE_VERSION=true` | Print version info and exit |
 
 Version info is an aligned key-value table (first line `Weaver <version>`, followed by Go / OS/Arch / Commit / Built; empty rows are omitted). It is also available via the `weaver version` subcommand:

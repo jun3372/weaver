@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -39,6 +40,26 @@ func parseFlags() {
 	}
 }
 
+var confNames = []string{"weaver", "config"}
+var confExts = []string{"yaml", "yml", "toml", "json"}
+
+// discoverConf 依次在 dirs 中查找配置文件,目录顺序优先于文件名,文件名
+// 顺序(weaver → config)优先于扩展名(yaml → yml → toml → json),
+// 返回首个命中的完整路径,未命中返回空串。
+func discoverConf(dirs []string) string {
+	for _, dir := range dirs {
+		for _, name := range confNames {
+			for _, ext := range confExts {
+				p := filepath.Join(dir, name+"."+ext)
+				if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+					return p
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Context, *T) error) error {
 	parseFlags()
 
@@ -48,6 +69,19 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	}
 
 	var conf *viper.Viper
+	if confFile == "" {
+		var dirs []string
+		if wd, err := os.Getwd(); err == nil {
+			dirs = append(dirs, wd)
+		}
+		if exe, err := os.Executable(); err == nil {
+			dirs = append(dirs, filepath.Dir(exe))
+		}
+		if p := discoverConf(dirs); p != "" {
+			slog.Info("自动发现配置文件", "file", p)
+			confFile = p
+		}
+	}
 	if confFile != "" {
 		conf = viper.New()
 		conf.SetConfigFile(confFile)

@@ -125,7 +125,7 @@ curl localhost:8080        # Hello, Weaver!
 
 | 参数 | 环境变量 | 说明 |
 | --- | --- | --- |
-| `-conf` | `SERVICE_CONFIG` | 配置文件路径，未指定时不加载配置 |
+| `-conf` | `SERVICE_CONFIG` | 配置文件路径；未指定时自动在工作目录及程序目录下查找 `weaver.*` / `config.*`（yaml/yml/toml/json），均未找到则不加载配置 |
 | `-version` | `SERVICE_VERSION=true` | 打印版本信息后退出 |
 
 版本信息为对齐的键值表（首行 `Weaver <版本>`，随后 Go / OS/Arch / Commit / Built，无值的行省略），也可通过 `weaver version` 子命令查看：

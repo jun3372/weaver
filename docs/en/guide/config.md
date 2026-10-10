@@ -66,7 +66,7 @@ Weaver watches the config file via Viper's `WatchConfig`:
 - When the file changes, the configuration of all registered components is reloaded automatically (`UnmarshalKey` is re-run) — **no process restart, no service interruption**.
 - Whether a value "takes effect" depends on how it is used: fields read via `Config()` on every request/call apply immediately; fields read once at startup (e.g. the Listener's listen address) only pick up new values after a restart.
 
-This means saving an updated `weaver.yaml` is enough — no process restart required (as long as the config file was passed via `-conf`).
+This means saving an updated `weaver.yaml` is enough — no process restart required (as long as the config file was passed via `-conf` or auto-discovered).
 
 ## Specifying the Config File
 
@@ -78,4 +78,4 @@ go run main.go -conf weaver.yaml
 SERVICE_CONFIG=weaver.yaml go run main.go
 ```
 
-When no config file is specified, `WithConfig` injects nothing.
+When not specified, Weaver auto-discovers the config file: it searches the working directory and then the executable's directory, matching file names `weaver` or `config` (`weaver` wins within the same directory), probing extensions in `yaml → yml → toml → json` order. The discovered file is loaded and an Info log records the path; if nothing is found, `WithConfig` injects nothing (an Info log is emitted and startup proceeds normally).
