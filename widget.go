@@ -60,7 +60,7 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 	}
 	w.log = w.newLogger()
 	if w.conf == nil {
-		w.log.Info("未指定配置文件(通过 -conf 参数或 SERVICE_CONFIG 环境变量),组件配置将不会被注入")
+		w.log.Info("未找到配置文件(-conf 参数与 SERVICE_CONFIG 环境变量均未指定,且当前目录及程序目录下无 weaver.*/config.*),组件配置将不会被注入")
 	} else {
 		conf.WatchConfig()
 		conf.OnConfigChange(func(e fsnotify.Event) {
