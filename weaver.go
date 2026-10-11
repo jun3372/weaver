@@ -24,19 +24,29 @@ import (
 type Main any
 
 var (
-	flagsOnce sync.Once
-	confFile  string
-	showVer   bool
+	flagsOnce     sync.Once
+	confFile      string
+	showVer       bool
+	envPrefixName string // 环境变量前缀,默认 "WEAVER",可由 SERVICE_ENV_PREFIX 覆盖
 )
 
 func parseFlags() {
 	flagsOnce.Do(func() {
 		flag.StringVar(&confFile, "conf", os.Getenv("SERVICE_CONFIG"), "config file path")
 		flag.BoolVar(&showVer, "version", strings.ToLower(os.Getenv("SERVICE_VERSION")) == "true", "print version info")
+		resolveEnvPrefix()
 	})
 	// 宿主程序可能已自行调用过 flag.Parse
 	if !flag.Parsed() {
 		flag.Parse()
+	}
+}
+
+// resolveEnvPrefix 从 SERVICE_ENV_PREFIX 读取环境变量前缀,缺省 "WEAVER"。
+func resolveEnvPrefix() {
+	envPrefixName = os.Getenv("SERVICE_ENV_PREFIX")
+	if envPrefixName == "" {
+		envPrefixName = "WEAVER"
 	}
 }
 
@@ -84,6 +94,9 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	}
 	if confFile != "" {
 		conf = viper.New()
+		conf.SetEnvPrefix(envPrefixName)
+		conf.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+		conf.AutomaticEnv()
 		conf.SetConfigFile(confFile)
 		if err := conf.ReadInConfig(); err != nil {
 			return errors.Errorf("Fatal error config file: %v", err)
@@ -92,7 +105,7 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 	var cancel context.CancelFunc
 	ctx, cancel = signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	widget := newWidget(ctx, cancel, conf, codegen.Registered())
+	widget := newWidget(ctx, cancel, conf, codegen.Registered(), envPrefixName)
 	main, err := widget.getImpl(reflection.Type[T]())
 	if err != nil {
 		return err

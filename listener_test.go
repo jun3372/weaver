@@ -172,7 +172,7 @@ func newListenerWidget(t testing.TB, yamlConf string, regs ...*codegen.Registrat
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	return ctx, cancel, newWidget(ctx, cancel, conf, regs)
+	return ctx, cancel, newWidget(ctx, cancel, conf, regs, "WEAVER")
 }
 
 func listenerReg(t testing.TB, impl any) *codegen.Registration {

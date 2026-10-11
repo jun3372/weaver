@@ -3,7 +3,13 @@ app:
 
 http:
   Addr: ":8080"          # 服务组件 Start 时读取,修改需重启
+  Prefix: "/api"         # HTTP 路由前缀,空或 "/" 表示根路径
   Message: "hello v1"    # 每次请求实时读取,热更新无需重启
+  # 环境变量覆盖(优先级:env > 文件 > default tag):
+  #   WEAVER_HTTP_ADDR=":9999"
+  #   WEAVER_HTTP_PREFIX="/v2"
+  #   WEAVER_HTTP_MESSAGE="from env"
+  # 自定义前缀:SERVICE_ENV_PREFIX=MYAPP → MYAPP_HTTP_MESSAGE=xxx
 
 tcp:
   Addr: ":8081"
@@ -15,3 +21,6 @@ weaver:
   Logger:
     Level: "info"
     Type: "json"
+    # 环境变量覆盖:
+    #   WEAVER_LOGGER_LEVEL=debug
+    #   WEAVER_LOGGER_TYPE=text

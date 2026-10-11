@@ -45,6 +45,7 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |
 | `cmd/weaver/` | cobra CLI：`init`（项目脚手架）、`make`（组件实现生成）、`generate`（注册代码生成）、`version` |
 | `internal/config` | 系统配置结构体，配置 tag 为 `["weaver", "config", "conf"]` |
+| `internal/defaults` | `default` tag 解析与环境变量绑定（`Apply` / `BindFields`） |
 | `internal/generate` | 代码生成引擎 |
 | `internal/reflection` | `Type[T]`、`ComponentName[T]` 等反射工具 |
 | `internal/files` | 原子文件写入（遗留代码） |
@@ -65,6 +66,52 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 - **注释**：中英混用，新增注释建议中文，与 README 一致。
 - **提交信息**：遵循 conventional commits（`feat:`、`fix:`、`refactor:`、`docs:`、`chore:`），参考 `git log` 既有风格。
 - **配置 tag**：组件配置字段使用 `conf:` tag（等价于 `weaver:` / `config:`）。
+
+## 配置系统
+
+### 默认值（default tag）
+
+结构体字段可通过 `default:"..."` tag 声明默认值，支持类型：string / bool / 各整数 / float32,64 / time.Duration / 嵌套 struct（递归）/ 指针 struct（非 nil 时递归）。slice / map / chan / func 不支持。
+
+```go
+type HTTPOption struct {
+    Addr            string        // 无默认
+    ShutdownTimeout time.Duration `default:"5s"`
+    ReadTimeout     time.Duration `default:"30s"`
+    MaxHeaderBytes  int           `default:"1048576"`
+}
+```
+
+### 环境变量覆盖
+
+环境变量可覆盖配置文件，命名规则：
+- **组件配置**：`{prefix}_{topLevelKey}_{fieldPath}`，如默认前缀下 `http.readTimeout` → `WEAVER_HTTP_READTIMEOUT`
+- **系统配置**：剥掉 "weaver" 顶层，如 `weaver.logger.level` → `WEAVER_LOGGER_LEVEL`
+- **前缀本身**：通过 `SERVICE_ENV_PREFIX` 环境变量覆盖，默认 `WEAVER`。如 `SERVICE_ENV_PREFIX=MYAPP` 时，组件 env 变为 `MYAPP_HTTP_ADDR`
+
+### 优先级
+
+**环境变量 > 配置文件 > default tag**。三者正交，缺省才回退下一层。
+
+### HTTP 路由前缀
+
+`HTTPOption.Prefix` 字段配置 HTTP 路由前缀：空或 "/" 表示根路径，否则规范化为 `/xxx/` 形式挂载 handler。
+
+```yaml
+http:
+  Addr: ":8080"
+  Prefix: "/api/v1"  # handler 挂载到 /api/v1/ 下
+```
+
+### 破坏性变更（v0.1.8）
+
+`HTTPOption` / `TCPOption` / `UDPOption` 原语义："零值取框架硬编码默认，负值关闭"。
+新语义："零值或负值均关闭，要默认就别写字段（由 `default` tag 填）"。
+
+影响：
+- 用户代码里显式写 `ReadTimeout: 0` 想取默认 30s 的，会变成关闭超时
+- `ActiveTimeout: 0`（原"取默认 60s"）变成"关闭活跃清扫"
+- `timeoutOr` / `maxHeaderBytesOr` 两个 helper 已删除
 
 ## 代理注意事项（重要）
 

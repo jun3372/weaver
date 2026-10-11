@@ -72,7 +72,7 @@ func newTestWidget(t *testing.T, regs ...*codegen.Registration) (context.Context
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	return ctx, newWidget(ctx, cancel, nil, regs)
+	return ctx, newWidget(ctx, cancel, nil, regs, "WEAVER")
 }
 
 func awaitCancel(t *testing.T, ctx context.Context, what string) {
@@ -197,7 +197,7 @@ func newTestWidgetWithConf(t *testing.T, regs ...*codegen.Registration) *widget 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	return newWidget(ctx, cancel, conf, regs)
+	return newWidget(ctx, cancel, conf, regs, "WEAVER")
 }
 
 // 组件创建（写 components/watchConfig）与配置热更新（读两者）并发时不应产生数据竞争。
