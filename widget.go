@@ -4,16 +4,20 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 
 	"github.com/jun3372/weaver/internal/config"
+	"github.com/jun3372/weaver/internal/defaults"
 	"github.com/jun3372/weaver/runtime/codegen"
 	"github.com/jun3372/weaver/runtime/logger"
 )
@@ -21,6 +25,7 @@ import (
 type widget struct {
 	ctx             context.Context
 	conf            *viper.Viper
+	envPrefix       string
 	option          *config.Config
 	log             *slog.Logger
 	mu              sync.Mutex
@@ -34,10 +39,11 @@ type widget struct {
 	watchConfig     []func()
 }
 
-func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration) *widget {
+func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration, envPrefix string) *widget {
 	w := widget{
 		ctx:             ctx,
 		conf:            conf,
+		envPrefix:       envPrefix,
 		cancel:          cancel,
 		option:          new(config.Config),
 		regsByName:      map[string]*codegen.Registration{},
@@ -54,8 +60,21 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 	}
 
 	if w.conf != nil {
+		// 注册环境变量绑定:系统配置(手工,剥掉 "weaver" 顶层避免重复)+ 组件配置(通用扫描)
+		bindSystemConfig(w.conf, envPrefix)
+		for _, reg := range regs {
+			scanAndBind(w.conf, reg.Impl, envPrefix)
+		}
+
 		if err := conf.UnmarshalKey("weaver", &w.option); err != nil {
 			slog.Warn("failed to unmarshal system config", "err", err)
+		}
+		// 环境变量覆盖:viper.UnmarshalKey 不尊重 env,需手动应用
+		// 系统配置传空 topLevelKey,避免 env 名重复(WEAVER_LOGGER_LEVEL 而非 WEAVER_WEAVER_LOGGER_LEVEL)
+		applyEnvVars(w.option, conf, envPrefix, "")
+		// 系统配置 default tag 填充:仅对 viper 未设置的零值字段生效
+		if err := defaults.Apply(w.option, "weaver", w.conf.IsSet); err != nil {
+			slog.Warn("failed to apply system config defaults", "err", err)
 		}
 	}
 	w.log = w.newLogger()
@@ -244,6 +263,205 @@ func listeners(impl any) ([]listenerAPI, error) {
 	return out, nil
 }
 
+// bindSystemConfig 为系统配置手工注册环境变量绑定,剥掉 "weaver" 顶层避免
+// env 名重复(如 WEAVER_WEAVER_LOGGER_LEVEL)。
+func bindSystemConfig(conf *viper.Viper, prefix string) {
+	env := func(suffix string) string { return prefix + "_" + suffix }
+	conf.BindEnv("weaver.logger.level", env("LOGGER_LEVEL"))
+	conf.BindEnv("weaver.logger.type", env("LOGGER_TYPE"))
+	conf.BindEnv("weaver.logger.addsource", env("LOGGER_ADDSOURCE"))
+	conf.BindEnv("weaver.logger.component", env("LOGGER_COMPONENT"))
+	conf.BindEnv("weaver.logger.file.filename", env("LOGGER_FILE_FILENAME"))
+	conf.BindEnv("weaver.logger.file.maxsize", env("LOGGER_FILE_MAXSIZE"))
+	conf.BindEnv("weaver.logger.file.maxage", env("LOGGER_FILE_MAXAGE"))
+	conf.BindEnv("weaver.logger.file.maxbackups", env("LOGGER_FILE_MAXBACKUPS"))
+	conf.BindEnv("weaver.logger.file.localtime", env("LOGGER_FILE_LOCALTIME"))
+	conf.BindEnv("weaver.logger.file.compress", env("LOGGER_FILE_COMPRESS"))
+}
+
+// applyEnvVars 手动从环境变量读取值并覆盖 struct 字段。
+// 用于解决 viper.UnmarshalKey 不尊重环境变量的限制。
+// envPrefix 是环境变量前缀(如 "WEAVER"),topLevelKey 是配置顶层 key(如 "http")。
+func applyEnvVars(v any, conf *viper.Viper, envPrefix string, topLevelKey string) {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
+		return
+	}
+	rv = rv.Elem()
+	if rv.Kind() != reflect.Struct {
+		return
+	}
+	applyEnvToStruct(rv, conf, envPrefix, topLevelKey, "")
+}
+
+func applyEnvToStruct(s reflect.Value, conf *viper.Viper, envPrefix string, topLevelKey string, fieldPath string) {
+	t := s.Type()
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+
+		fv := s.Field(i)
+		currentPath := fieldPath
+		if currentPath == "" {
+			currentPath = f.Name
+		} else {
+			currentPath = fieldPath + "." + f.Name
+		}
+
+		// 嵌套 struct
+		if fv.Kind() == reflect.Struct {
+			applyEnvToStruct(fv, conf, envPrefix, topLevelKey, currentPath)
+			continue
+		}
+		if fv.Kind() == reflect.Pointer && fv.Type().Elem().Kind() == reflect.Struct && !fv.IsNil() {
+			applyEnvToStruct(fv.Elem(), conf, envPrefix, topLevelKey, currentPath)
+			continue
+		}
+
+		// 构造环境变量名
+		// topLevelKey 为空时(系统配置),不包含顶层前缀,避免 WEAVER_WEAVER_LOGGER_LEVEL
+		var envName string
+		if topLevelKey == "" {
+			envName = envPrefix + "_" + strings.ToUpper(strings.ReplaceAll(currentPath, ".", "_"))
+		} else {
+			envName = envPrefix + "_" + strings.ToUpper(topLevelKey) + "_" + strings.ToUpper(strings.ReplaceAll(currentPath, ".", "_"))
+		}
+		envVal := os.Getenv(envName)
+		if envVal == "" {
+			continue
+		}
+
+		// 解析并设置值
+		setFieldFromString(fv, envVal)
+	}
+}
+
+func setFieldFromString(fv reflect.Value, val string) {
+	switch fv.Kind() {
+	case reflect.String:
+		fv.SetString(val)
+	case reflect.Bool:
+		if b, err := strconv.ParseBool(val); err == nil {
+			fv.SetBool(b)
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if fv.Type() == reflect.TypeOf(time.Duration(0)) {
+			if d, err := time.ParseDuration(val); err == nil {
+				fv.SetInt(int64(d))
+			}
+		} else if n, err := strconv.ParseInt(val, 10, 64); err == nil {
+			fv.SetInt(n)
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if n, err := strconv.ParseUint(val, 10, 64); err == nil {
+			fv.SetUint(n)
+		}
+	case reflect.Float32, reflect.Float64:
+		if n, err := strconv.ParseFloat(val, 64); err == nil {
+			fv.SetFloat(n)
+		}
+	}
+}
+
+// listenerOptionType 从 Listener[H] 字段类型推断配置类型。
+// 复用 init 的协议探测逻辑:单协议直接映射,聚合类型按组件实现决定。
+func listenerOptionType(listenerType reflect.Type, implType reflect.Type) reflect.Type {
+	// 从类型字符串提取类型参数 H
+	// 例如:"weaver.Listener[http.Handler]" -> "http.Handler"
+	typeStr := listenerType.String()
+	start := strings.Index(typeStr, "[")
+	end := strings.LastIndex(typeStr, "]")
+	if start == -1 || end == -1 || start >= end {
+		return nil
+	}
+	hTypeStr := typeStr[start+1 : end]
+
+	// 根据类型参数字符串判断协议类型
+	var hType reflect.Type
+	switch {
+	case strings.HasSuffix(hTypeStr, "http.Handler") || hTypeStr == "http.Handler":
+		hType = httpHandlerType
+	case strings.HasSuffix(hTypeStr, ".TCPHandler") || hTypeStr == "weaver.TCPHandler":
+		hType = tcpHandlerType
+	case strings.HasSuffix(hTypeStr, ".UDPPacketHandler") || hTypeStr == "weaver.UDPPacketHandler":
+		hType = udpHandlerType
+	case strings.HasSuffix(hTypeStr, ".Handler") || hTypeStr == "weaver.Handler":
+		// 聚合类型:按组件实现决定
+		found := handlerProtocols(implType)
+		switch len(found) {
+		case 0:
+			return reflect.TypeFor[HTTPOption]()
+		case 1:
+			switch found[0] {
+			case httpHandlerType:
+				return reflect.TypeFor[HTTPOption]()
+			case tcpHandlerType:
+				return reflect.TypeFor[TCPOption]()
+			case udpHandlerType:
+				return reflect.TypeFor[UDPOption]()
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
+
+	// 单协议:直接映射
+	switch hType {
+	case httpHandlerType:
+		return reflect.TypeFor[HTTPOption]()
+	case tcpHandlerType:
+		return reflect.TypeFor[TCPOption]()
+	case udpHandlerType:
+		return reflect.TypeFor[UDPOption]()
+	}
+	return nil
+}
+
+// scanAndBind 扫描组件实现类型的字段,为 WithConfig 与 Listener 字段的配置类型
+// 注册环境变量绑定。
+func scanAndBind(conf *viper.Viper, implType reflect.Type, envPrefix string) {
+	// implType 是 struct 类型(非指针)
+	if implType.Kind() == reflect.Pointer {
+		implType = implType.Elem()
+	}
+	if implType.Kind() != reflect.Struct {
+		return
+	}
+
+	for i := 0; i < implType.NumField(); i++ {
+		f := implType.Field(i)
+		fName := f.Type.Name()
+
+		// WithConfig[T] 字段
+		if isConfigManagedType(fName) {
+			key := fieldConfTag(f)
+			if key == "" {
+				continue
+			}
+			cfgField, ok := f.Type.FieldByName("config")
+			if !ok {
+				continue
+			}
+			defaults.BindFields(conf, key, envPrefix, cfgField.Type)
+			continue
+		}
+
+		// Listener[H] 字段
+		if strings.HasPrefix(fName, "Listener[") {
+			key := fieldConfTag(f)
+			if key == "" {
+				continue
+			}
+			if optType := listenerOptionType(f.Type, implType); optType != nil {
+				defaults.BindFields(conf, key, envPrefix, optType)
+			}
+		}
+	}
+}
+
 // WithConfig 遍历组件字段完成装配:
 //   - Listener 字段:以组件自身 init 出对应服务端,并按 conf tag 注入配置、注册热更新;
 //   - WithConfig 字段:沿用既有 SetConfig 注入链路(HTTP/TCP/UDP 服务已收敛为
@@ -297,6 +515,11 @@ func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 				w.logger("weaver").Error("解析配置失败", "key", key, "err", err)
 				return
 			}
+			applyEnvVars(tmp.Interface(), w.conf, w.envPrefix, key)
+			if err := defaults.Apply(tmp.Interface(), key, w.conf.IsSet); err != nil {
+				w.logger("weaver").Error("应用默认配置失败", "key", key, "err", err)
+				return
+			}
 			fc.MethodByName("SetConfig").Call([]reflect.Value{tmp.Elem()})
 		}
 
@@ -337,6 +560,11 @@ func (w *widget) initListener(l listenerAPI, impl any, f reflect.StructField, se
 		tmp := reflect.New(l.confType())
 		if err := w.conf.UnmarshalKey(key, tmp.Interface()); err != nil {
 			w.logger("weaver").Error("解析配置失败", "key", key, "err", err)
+			return
+		}
+		applyEnvVars(tmp.Interface(), w.conf, w.envPrefix, key)
+		if err := defaults.Apply(tmp.Interface(), key, w.conf.IsSet); err != nil {
+			w.logger("weaver").Error("应用默认配置失败", "key", key, "err", err)
 			return
 		}
 		l.setConf(tmp.Elem().Interface())

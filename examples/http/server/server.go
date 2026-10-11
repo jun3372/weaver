@@ -11,7 +11,7 @@ import (
 // option 为动态配置字段,与 Listener 共用 conf key "http":
 // yaml 同一段落中 Addr 由 listener 消费,Message 由本组件消费。
 type option struct {
-	Message string
+	Message string `default:"hello from default"` // 缺省走 default tag,配置文件/env 覆盖
 }
 
 type T interface{}

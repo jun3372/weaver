@@ -18,65 +18,54 @@ import (
 // 服务组件默认优雅关闭等待时间。
 const defaultShutdownTimeout = 5 * time.Second
 
-// httpServer 超时与请求头默认值;零值字段取默认,显式负值关闭对应超时。
-const (
-	defaultReadTimeout       = 30 * time.Second
-	defaultReadHeaderTimeout = 10 * time.Second
-	defaultWriteTimeout      = 30 * time.Second
-	defaultIdleTimeout       = 120 * time.Second
-	defaultMaxHeaderBytes    = 1 << 20
-
-	defaultActiveTimeout = 60 * time.Second
-)
-
-// timeoutOr 解析超时配置:0 取默认,负值返回 0(关闭超时),其余原样返回。
-func timeoutOr(v, def time.Duration) time.Duration {
-	switch {
-	case v < 0:
-		return 0
-	case v == 0:
-		return def
-	default:
-		return v
+// normalizePrefix 规范化 HTTP 路由前缀:空串或 "/" 返回 ""(根路径),
+// 否则确保以 "/" 开头、以 "/" 结尾(http.ServeMux 的 subtree 模式需要尾部斜杠)。
+func normalizePrefix(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" || p == "/" {
+		return ""
 	}
-}
-
-// maxHeaderBytesOr 解析请求头大小上限:<=0 取默认。
-func maxHeaderBytesOr(v int) int {
-	if v <= 0 {
-		return defaultMaxHeaderBytes
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
 	}
-	return v
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p
 }
 
 // HTTPOption 是 httpServer 的配置项,通过 conf tag 注入。
+// 零值或负值均关闭对应超时;要取默认值请省略字段(由 default tag 填充)。
 type HTTPOption struct {
 	Addr            string        // 监听地址,如 ":8080";Serve 时读取,修改需重启
-	ShutdownTimeout time.Duration // 优雅关闭等待时间,缺省 5s
-	// 超时防慢速攻击(slowloris):0 取默认,负值显式关闭。
-	ReadTimeout       time.Duration // 整个请求读取超时,缺省 30s
-	ReadHeaderTimeout time.Duration // 请求头读取超时,缺省 10s
-	WriteTimeout      time.Duration // 响应写出超时,缺省 30s(长连接流式响应需显式关闭)
-	IdleTimeout       time.Duration // keep-alive 空闲超时,缺省 120s
-	MaxHeaderBytes    int           // 请求头大小上限,缺省 1MB
+	Prefix          string        `default:""` // HTTP 路由前缀,如 "/api/v1";空或 "/" 表示根路径
+	ShutdownTimeout time.Duration `default:"5s"`
+	// 超时防慢速攻击(slowloris):零值或负值关闭对应超时。
+	ReadTimeout       time.Duration `default:"30s"`  // 整个请求读取超时
+	ReadHeaderTimeout time.Duration `default:"10s"`  // 请求头读取超时
+	WriteTimeout      time.Duration `default:"30s"`  // 响应写出超时(长连接流式响应需显式关闭)
+	IdleTimeout       time.Duration `default:"120s"` // keep-alive 空闲超时
+	MaxHeaderBytes    int           `default:"1048576"` // 请求头大小上限(1MB)
 }
 
 // TCPOption 是 tcpServer 的配置项,通过 conf tag 注入。
+// 零值或负值均关闭对应限制;要取默认值请省略字段(由 default tag 填充)。
 type TCPOption struct {
 	Addr            string
-	ShutdownTimeout time.Duration
+	ShutdownTimeout time.Duration `default:"5s"`
 	MaxConns        int           // 最大并发连接数,超过后立即关闭新连接;<=0 不限
 	ConnIdleTimeout time.Duration // 连接空闲超时,每次收发自动续期;<=0 不限
 	// ActiveTimeout 连接活跃超时:超过该时长未发生任何成功的收或发
 	// (客户端上行数据、服务端推送成功均计入)即判定离线,由后台清扫主动
-	// 关闭连接(handler 将收到读错误并退出);0 取默认 60s,负值关闭。
-	ActiveTimeout time.Duration
+	// 关闭连接(handler 将收到读错误并退出);零值或负值关闭清扫。
+	ActiveTimeout time.Duration `default:"60s"`
 }
 
 // UDPOption 是 udpServer 的配置项,通过 conf tag 注入。
+// 零值或负值均关闭对应限制;要取默认值请省略字段(由 default tag 填充)。
 type UDPOption struct {
 	Addr            string
-	ShutdownTimeout time.Duration
+	ShutdownTimeout time.Duration `default:"5s"`
 	MaxConcurrent   int // 单包处理最大并发数,超过后丢弃报文;<=0 不限
 }
 
@@ -196,13 +185,20 @@ func (s *httpServer) serve(ctx context.Context, h http.Handler) error {
 
 	s.mu.Lock()
 	s.ln = ln
+	// 路由前缀:空或 "/" 表示根路径,否则规范化为 "/xxx/" 形式挂载 handler
+	var finalHandler http.Handler = h
+	if prefix := normalizePrefix(opt.Prefix); prefix != "" {
+		mux := http.NewServeMux()
+		mux.Handle(prefix, h)
+		finalHandler = mux
+	}
 	s.srv = &http.Server{
-		Handler:           h,
-		ReadTimeout:       timeoutOr(opt.ReadTimeout, defaultReadTimeout),
-		ReadHeaderTimeout: timeoutOr(opt.ReadHeaderTimeout, defaultReadHeaderTimeout),
-		WriteTimeout:      timeoutOr(opt.WriteTimeout, defaultWriteTimeout),
-		IdleTimeout:       timeoutOr(opt.IdleTimeout, defaultIdleTimeout),
-		MaxHeaderBytes:    maxHeaderBytesOr(opt.MaxHeaderBytes),
+		Handler:           finalHandler,
+		ReadTimeout:       opt.ReadTimeout,
+		ReadHeaderTimeout: opt.ReadHeaderTimeout,
+		WriteTimeout:      opt.WriteTimeout,
+		IdleTimeout:       opt.IdleTimeout,
+		MaxHeaderBytes:    opt.MaxHeaderBytes,
 	}
 	s.mu.Unlock()
 	// Serve 返回后清空运行态,Addr() 归零并允许修正配置后重新 Serve
@@ -328,8 +324,8 @@ func (s *tcpServer) serve(ctx context.Context, h TCPHandler) error {
 	}()
 
 	// 活跃超时清扫:定期关闭未在窗口内收到客户端数据的连接(判定离线)
-	if active := timeoutOr(opt.ActiveTimeout, defaultActiveTimeout); active > 0 {
-		go s.reapIdle(ctx, active, log)
+	if opt.ActiveTimeout > 0 {
+		go s.reapIdle(ctx, opt.ActiveTimeout, log)
 	}
 
 	for {
