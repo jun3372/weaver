@@ -88,6 +88,8 @@ A minimal project template — the recommended starting point for new projects:
 - `main.go`: main application skeleton
 - `weaver.yaml` / `weaver.toml`: config file skeletons
 
+For usage tutorials of the 15 middleware client plugins (redis, kafka, db, etc.), see [Plugins: Middleware Client Integrations](/en/guide/plugins).
+
 ## Further Reading
 
 - [Getting Started](/en/guide/getting-started)
