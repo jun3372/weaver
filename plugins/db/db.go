@@ -80,6 +80,9 @@ func (d *db) Init(ctx context.Context) error {
 	if opts == nil {
 		opts = &gorm.Config{}
 	}
+	if opts.Logger == nil {
+		opts.Logger = newSlogLogger(d.Logger)
+	}
 
 	db, err := gorm.Open(dialector, opts)
 	if err != nil {
