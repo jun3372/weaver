@@ -72,6 +72,15 @@ func (u *userRepo) Transfer(ctx context.Context, from, to int64) error {
 }
 ```
 
+## 日志
+
+GORM 内部日志默认桥接到 weaver 的 slog（`Logger(ctx)`，自动附加 trace/span ID）：
+
+- 默认级别 `Warn`（错误必记、慢查询告警、普通 SQL 需 `LogMode(Info)` 后以 Debug 输出）
+- 慢查询阈值 200ms（GORM 默认值）
+- `ErrRecordNotFound` 不按错误记录
+- 在 `GormConfig.Logger` 中自定义 GORM logger 时优先使用自定义值，组件不覆盖
+
 ## 生命周期
 
 - `Init`：未启用时打日志直接返回；按 DSN scheme 选择 GORM dialector 后 `gorm.Open`
