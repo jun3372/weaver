@@ -18,6 +18,7 @@ const pluginPages = (prefix: string, t: Record<string, string>) => [
   { text: t.pluginMessaging, link: `${prefix}/guide/plugins/messaging` },
   { text: t.pluginRegistry, link: `${prefix}/guide/plugins/registry` },
   { text: t.pluginStorage, link: `${prefix}/guide/plugins/storage` },
+  { text: t.pluginScheduler, link: `${prefix}/guide/plugins/scheduler` },
 ]
 
 const sidebarLabels = (prefix: string, zh: boolean) => ({
@@ -35,6 +36,7 @@ const sidebarLabels = (prefix: string, zh: boolean) => ({
   pluginMessaging: zh ? '消息队列:kafka / rabbitmq / nats / nsq / mqtt' : 'Messaging: kafka / rabbitmq / nats / nsq / mqtt',
   pluginRegistry: zh ? '注册与配置中心:consul / etcd / nacos / zookeeper' : 'Registry & Config: consul / etcd / nacos / zookeeper',
   pluginStorage: zh ? '存储与搜索:s3 / elasticsearch' : 'Storage & Search: s3 / elasticsearch',
+  pluginScheduler: zh ? '任务调度:gocron' : 'Task Scheduling: gocron',
 })
 
 export default defineConfig({

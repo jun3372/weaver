@@ -22,6 +22,7 @@
 | 对象存储 | [s3](/guide/plugins/storage#s3) | [minio-go/v7](https://github.com/minio/minio-go) | `github.com/jun3372/weaver/plugins/s3` |
 | 搜索 | [elasticsearch](/guide/plugins/storage#elasticsearch) | [go-elasticsearch/v9](https://github.com/elastic/go-elasticsearch) | `github.com/jun3372/weaver/plugins/elasticsearch` |
 | 搜索 | [meilisearch](/guide/plugins/storage#meilisearch) | [meilisearch-go](https://github.com/meilisearch/meilisearch-go) | `github.com/jun3372/weaver/plugins/meilisearch` |
+| 任务调度 | [gocron](/guide/plugins/scheduler#gocron) | [go-co-op/gocron/v2](https://github.com/go-co-op/gocron) | `github.com/jun3372/weaver/plugins/gocron` |
 
 ## 统一使用模式
 
@@ -91,6 +92,7 @@ redis:
 - [消息队列:kafka / rabbitmq / nats / nsq / mqtt](/guide/plugins/messaging)
 - [注册与配置中心:consul / etcd / nacos / zookeeper](/guide/plugins/registry)
 - [存储与搜索:s3 / elasticsearch / meilisearch](/guide/plugins/storage)
+- [任务调度:gocron](/guide/plugins/scheduler)
 
 ## 相关阅读
 
