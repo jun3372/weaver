@@ -1,4 +1,4 @@
-# Storage & Search: s3 / elasticsearch
+# Storage & Search: s3 / elasticsearch / meilisearch
 
 ## s3
 
@@ -243,6 +243,94 @@ return bi.Close(ctx) // wait for everything to flush and close
 - `Init`: if not enabled, logs and returns immediately; parses the DSN into an address list, creates the client and probes with `Ping` (an error-level response also counts as failure)
 - `Shutdown`: the official client manages connections internally; no explicit close needed
 - Common errors: `ErrNotEnabled`/`ErrNotReady` (plugin not enabled / not ready); response-level failures must be detected via `res.IsError()`, and remember to call `res.Body.Close()`
+
+## meilisearch
+
+Weaver's Meilisearch client component, built on the official [meilisearch-go](https://github.com/meilisearch/meilisearch-go). Declare a `weaver.Ref[meilisearch.T]` to inject a `meilisearch.ServiceManager`; node configuration and the `Health` probe are managed by the framework lifecycle. Meilisearch is a batteries-included search engine with no mapping to define up front — a good fit for site search and e-commerce filtering.
+
+### Installation
+
+```bash
+go get github.com/jun3372/weaver/plugins/meilisearch
+```
+
+```go
+import _ "github.com/jun3372/weaver/plugins/meilisearch" // blank import completes component registration
+```
+
+### Configuration
+
+```yaml
+meilisearch:
+  Enabled: true
+  Host: "http://localhost:7700"
+  APIKey: "masterKey"
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Host` | `http://localhost:7700` | Node address, only `http://` / `https://` forms are accepted (Meilisearch is single-node, no multi-address) |
+| `APIKey` | empty | API Key (Bearer auth); leave empty for anonymous access |
+
+Environment variable overrides: `WEAVER_MEILISEARCH_HOST`, `WEAVER_MEILISEARCH_APIKEY`, `WEAVER_MEILISEARCH_ENABLED`.
+
+### Basic Usage
+
+```go
+type searchService struct {
+    weaver.Implements[SearchService]
+    weaver.Ref[meilisearch.T]
+}
+
+func (s *searchService) Search(ctx context.Context, index, q string) ([]interface{}, error) {
+    cli, err := s.Ref().Client(ctx)
+    if err != nil {
+        return nil, err
+    }
+    res, err := cli.Index(index).SearchWithContext(ctx, q, &meilisearch.SearchRequest{})
+    if err != nil {
+        return nil, err
+    }
+    return res.Hits, nil
+}
+```
+
+### Advanced Scenarios
+
+#### Indexing Documents
+
+```go
+cli, _ := s.Ref().Client(ctx)
+
+// Writes are async tasks returning TaskInfo; use cli.WaitForTask to await completion
+task, err := cli.Index("articles").AddDocumentsWithContext(ctx, []map[string]any{
+    {"id": 1, "title": "hello weaver", "views": 0},
+}, nil)
+if err != nil {
+    return err
+}
+_, err = cli.Index("articles").WaitForTaskWithContext(ctx, task.TaskUID)
+```
+
+#### Filtering and Pagination
+
+```go
+res, err := cli.Index("articles").SearchWithContext(ctx, "golang", &meilisearch.SearchRequest{
+    Filter:               "views >= 100",
+    Limit:                20,
+    AttributesToRetrieve: []string{"id", "title"},
+})
+```
+
+> Filterable fields must be declared in the index settings first, e.g.
+> `cli.Index("articles").UpdateFilterableAttributesWithContext(ctx, &[]interface{}{"views"})`.
+
+### Lifecycle & Errors
+
+- `Init`: if not enabled, logs and returns immediately; validates `Host`, creates the client with `meilisearch.New` and probes with `HealthWithContext` (a status other than `available` also counts as failure)
+- `Shutdown`: the v0.36 `ServiceManager` manages connections internally and exposes no close method; no explicit close needed
+- Common errors: `ErrNotEnabled`/`ErrNotReady` (plugin not enabled / not ready), `ErrInvalidHost` (Host missing a valid scheme)
 
 ## Further Reading
 
