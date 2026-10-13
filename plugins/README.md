@@ -22,6 +22,7 @@ Weaver 官方客户端插件集合。每个插件是一个独立 Go module，将
 | [nacos](nacos/) | 注册/配置中心 | [nacos-sdk-go/v2](https://github.com/nacos-group/nacos-sdk-go) | `github.com/jun3372/weaver/plugins/nacos` | [注册与配置中心](https://github.com/jun3372/weaver/blob/main/docs/guide/plugins/registry.md#nacos) |
 | [zookeeper](zookeeper/) | 注册/配置中心 | [go-zookeeper](https://github.com/go-zookeeper/zk) | `github.com/jun3372/weaver/plugins/zookeeper` | [注册与配置中心](https://github.com/jun3372/weaver/blob/main/docs/guide/plugins/registry.md#zookeeper) |
 | [s3](s3/) | 对象存储 | [minio-go/v7](https://github.com/minio/minio-go) | `github.com/jun3372/weaver/plugins/s3` | [存储与搜索](https://github.com/jun3372/weaver/blob/main/docs/guide/plugins/storage.md#s3) |
+| [gocron](gocron/) | 任务调度 | [go-co-op/gocron/v2](https://github.com/go-co-op/gocron) | `github.com/jun3372/weaver/plugins/gocron` | [任务调度](https://github.com/jun3372/weaver/blob/main/docs/guide/plugins/scheduler.md#gocron) |
 
 ## 统一使用模式
 
