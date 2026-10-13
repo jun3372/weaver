@@ -21,6 +21,7 @@ The `plugins/` directory provides 15 officially maintained middleware client plu
 | Registry / Config Center | [zookeeper](/en/guide/plugins/registry#zookeeper) | [go-zookeeper](https://github.com/go-zookeeper/zk) | `github.com/jun3372/weaver/plugins/zookeeper` |
 | Object Storage | [s3](/en/guide/plugins/storage#s3) | [minio-go/v7](https://github.com/minio/minio-go) | `github.com/jun3372/weaver/plugins/s3` |
 | Search | [elasticsearch](/en/guide/plugins/storage#elasticsearch) | [go-elasticsearch/v9](https://github.com/elastic/go-elasticsearch) | `github.com/jun3372/weaver/plugins/elasticsearch` |
+| Search | [meilisearch](/en/guide/plugins/storage#meilisearch) | [meilisearch-go](https://github.com/meilisearch/meilisearch-go) | `github.com/jun3372/weaver/plugins/meilisearch` |
 
 ## Uniform Usage Pattern
 
@@ -89,7 +90,7 @@ Each plugin has its own `go.mod`; unless imported, no client library dependency 
 - [Cache: redis / memcached](/en/guide/plugins/cache)
 - [Messaging: kafka / rabbitmq / nats / nsq / mqtt](/en/guide/plugins/messaging)
 - [Registry & Config Center: consul / etcd / nacos / zookeeper](/en/guide/plugins/registry)
-- [Storage & Search: s3 / elasticsearch](/en/guide/plugins/storage)
+- [Storage & Search: s3 / elasticsearch / meilisearch](/en/guide/plugins/storage)
 
 ## Further Reading
 
