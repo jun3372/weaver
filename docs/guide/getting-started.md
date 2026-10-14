@@ -132,7 +132,7 @@ curl localhost:8080        # Hello, Weaver!
 
 ```bash
 $ weaver version
-Weaver v0.1.6
+Weaver v0.1.9
   Go:      go1.27.1
   OS/Arch: darwin/arm64
   Commit:  f3dd60d

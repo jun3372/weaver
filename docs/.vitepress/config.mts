@@ -9,16 +9,16 @@ const guide = (prefix: string, t: Record<string, string>) => [
   { text: t.lifecycle, link: `${prefix}/guide/lifecycle` },
   { text: t.generate, link: `${prefix}/guide/generate` },
   { text: t.opentelemetry, link: `${prefix}/guide/opentelemetry` },
-  { text: t.plugins, link: `${prefix}/guide/plugins` },
+  { text: t.components, link: `${prefix}/guide/components` },
 ]
 
-const pluginPages = (prefix: string, t: Record<string, string>) => [
-  { text: t.pluginDatabase, link: `${prefix}/guide/plugins/database` },
-  { text: t.pluginCache, link: `${prefix}/guide/plugins/cache` },
-  { text: t.pluginMessaging, link: `${prefix}/guide/plugins/messaging` },
-  { text: t.pluginRegistry, link: `${prefix}/guide/plugins/registry` },
-  { text: t.pluginStorage, link: `${prefix}/guide/plugins/storage` },
-  { text: t.pluginScheduler, link: `${prefix}/guide/plugins/scheduler` },
+const componentPages = (prefix: string, t: Record<string, string>) => [
+  { text: t.componentDatabase, link: `${prefix}/guide/components/database` },
+  { text: t.componentCache, link: `${prefix}/guide/components/cache` },
+  { text: t.componentMessaging, link: `${prefix}/guide/components/messaging` },
+  { text: t.componentRegistry, link: `${prefix}/guide/components/registry` },
+  { text: t.componentStorage, link: `${prefix}/guide/components/storage` },
+  { text: t.componentScheduler, link: `${prefix}/guide/components/scheduler` },
 ]
 
 const sidebarLabels = (prefix: string, zh: boolean) => ({
@@ -30,13 +30,13 @@ const sidebarLabels = (prefix: string, zh: boolean) => ({
   lifecycle: zh ? '生命周期管理' : 'Lifecycle Management',
   generate: zh ? 'CLI 工具' : 'CLI Tools',
   opentelemetry: zh ? 'OpenTelemetry 集成' : 'OpenTelemetry Integration',
-  plugins: zh ? '插件:中间件客户端集成' : 'Plugins: Middleware Client Integrations',
-  pluginDatabase: zh ? '数据库:db / mongodb' : 'Database: db / mongodb',
-  pluginCache: zh ? '缓存:redis / memcached' : 'Cache: redis / memcached',
-  pluginMessaging: zh ? '消息队列:kafka / rabbitmq / nats / nsq / mqtt' : 'Messaging: kafka / rabbitmq / nats / nsq / mqtt',
-  pluginRegistry: zh ? '注册与配置中心:consul / etcd / nacos / zookeeper' : 'Registry & Config: consul / etcd / nacos / zookeeper',
-  pluginStorage: zh ? '存储与搜索:s3 / elasticsearch' : 'Storage & Search: s3 / elasticsearch',
-  pluginScheduler: zh ? '任务调度:gocron' : 'Task Scheduling: gocron',
+  components: zh ? '组件:中间件客户端集成' : 'Components: Middleware Client Integrations',
+  componentDatabase: zh ? '数据库:db / mongodb' : 'Database: db / mongodb',
+  componentCache: zh ? '缓存:redis / memcached' : 'Cache: redis / memcached',
+  componentMessaging: zh ? '消息队列:kafka / rabbitmq / nats / nsq / mqtt' : 'Messaging: kafka / rabbitmq / nats / nsq / mqtt',
+  componentRegistry: zh ? '注册与配置中心:consul / etcd / nacos / zookeeper' : 'Registry & Config: consul / etcd / nacos / zookeeper',
+  componentStorage: zh ? '存储与搜索:s3 / elasticsearch' : 'Storage & Search: s3 / elasticsearch',
+  componentScheduler: zh ? '任务调度:gocron' : 'Task Scheduling: gocron',
 })
 
 export default defineConfig({
@@ -63,14 +63,14 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '指南', link: '/guide/getting-started' },
-          { text: '插件', link: '/guide/plugins' },
+          { text: '组件', link: '/guide/components' },
           { text: '示例', link: '/examples' },
           { text: 'GitHub', link: 'https://github.com/jun3372/weaver' },
         ],
         sidebar: {
           '/guide/': [
             { text: '指南', items: guide('', sidebarLabels('', true)) },
-            { text: '插件', items: pluginPages('', sidebarLabels('', true)) },
+            { text: '组件', items: componentPages('', sidebarLabels('', true)) },
           ],
           '/': [],
         },
@@ -91,14 +91,14 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Guide', link: '/en/guide/getting-started' },
-          { text: 'Plugins', link: '/en/guide/plugins' },
+          { text: 'Components', link: '/en/guide/components' },
           { text: 'Examples', link: '/en/examples' },
           { text: 'GitHub', link: 'https://github.com/jun3372/weaver' },
         ],
         sidebar: {
           '/en/guide/': [
             { text: 'Guide', items: guide('/en', sidebarLabels('/en', false)) },
-            { text: 'Plugins', items: pluginPages('/en', sidebarLabels('/en', false)) },
+            { text: 'Components', items: componentPages('/en', sidebarLabels('/en', false)) },
           ],
           '/en/': [],
         },
