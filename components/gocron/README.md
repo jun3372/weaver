@@ -40,7 +40,7 @@ type reportService struct {
 }
 
 func (s *reportService) Init(ctx context.Context) error {
-    return s.Ref().Register(ctx,
+    return s.Get().Register(ctx,
         gocronv2.CronJob("0 9 * * *", false), // 每天 9 点
         gocronv2.NewTask(s.dailyReport),
         gocronv2.WithName("daily-report"),

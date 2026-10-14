@@ -40,7 +40,7 @@ type configCenter struct {
 }
 
 func (c *configCenter) Get(ctx context.Context, key string) (string, error) {
-    cli, err := c.Ref().Client(ctx)
+    cli, err := c.Get().Client(ctx)
     if err != nil {
         return "", err
     }

@@ -53,7 +53,7 @@ type userRepo struct {
 }
 
 func (u *userRepo) Find(ctx context.Context, id int64) (*User, error) {
-    gdb, err := u.Ref().WithContext(ctx) // 自动携带 ctx(trace 透传)
+    gdb, err := u.Get().WithContext(ctx) // 自动携带 ctx(trace 透传)
     if err != nil {
         return nil, err
     }
@@ -73,7 +73,7 @@ func (u *userRepo) Find(ctx context.Context, id int64) (*User, error) {
 
 ```go
 func (u *userRepo) Transfer(ctx context.Context, from, to int64, amount int) error {
-    return u.Ref().Transaction(ctx, func(tx *gorm.DB) error {
+    return u.Get().Transaction(ctx, func(tx *gorm.DB) error {
         if err := tx.Model(&User{}).Where("id = ?", from).
             Update("balance", gorm.Expr("balance - ?", amount)).Error; err != nil {
             return err // 出错自动回滚
@@ -90,7 +90,7 @@ func (u *userRepo) Transfer(ctx context.Context, from, to int64, amount int) err
 
 ```go
 func (u *userRepo) Init(ctx context.Context) error {
-    gdb, err := u.Ref().WithContext(ctx)
+    gdb, err := u.Get().WithContext(ctx)
     if err != nil {
         return err
     }
@@ -104,7 +104,7 @@ func (u *userRepo) Init(ctx context.Context) error {
 - `Shutdown`:关闭底层 `*sql.DB` 连接池
 
 ```go
-gdb, err := u.Ref().WithContext(ctx)
+gdb, err := u.Get().WithContext(ctx)
 if errors.Is(err, db.ErrNotEnabled) {
     // db 组件未启用,走降级逻辑(如只读缓存)
 }
@@ -149,7 +149,7 @@ type userRepo struct {
 }
 
 func (u *userRepo) Find(ctx context.Context, id int64) (*User, error) {
-    cli, err := u.Ref().Client(ctx)
+    cli, err := u.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -179,7 +179,7 @@ type User struct {
 }
 
 func (u *userRepo) Save(ctx context.Context, user *User) error {
-    cli, _ := u.Ref().Client(ctx)
+    cli, _ := u.Get().Client(ctx)
     col := cli.Database("app").Collection("users")
     if _, err := col.InsertOne(ctx, user); err != nil {
         return err
@@ -193,7 +193,7 @@ func (u *userRepo) Save(ctx context.Context, user *User) error {
 #### Aggregate 聚合查询
 
 ```go
-cli, _ := u.Ref().Client(ctx)
+cli, _ := u.Get().Client(ctx)
 col := cli.Database("app").Collection("users")
 cur, err := col.Aggregate(ctx, []bson.M{
     {"$match": bson.M{"age": bson.M{"$gte": 18}}},
@@ -218,7 +218,7 @@ return cur.Err()
 多文档原子操作使用 Session 事务(v2 API):`StartSession` 后以 `WithTransaction` 包裹回调,出错自动 abort,成功自动 commit。事务要求副本集或分片集群,单机 `standalone` 不支持。
 
 ```go
-cli, err := u.Ref().Client(ctx)
+cli, err := u.Get().Client(ctx)
 if err != nil {
     return err
 }
@@ -245,7 +245,7 @@ return err
 - `Shutdown`:`Disconnect` 释放连接
 
 ```go
-cli, err := u.Ref().Client(ctx)
+cli, err := u.Get().Client(ctx)
 if errors.Is(err, mongodb.ErrNotEnabled) {
     // mongodb 组件未启用,走降级逻辑
 }

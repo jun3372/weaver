@@ -40,7 +40,7 @@ type taskDispatcher struct {
 }
 
 func (t *taskDispatcher) Dispatch(ctx context.Context, topic string, body []byte) error {
-    prod, err := t.Ref().Client(ctx)
+    prod, err := t.Get().Client(ctx)
     if err != nil {
         return err
     }

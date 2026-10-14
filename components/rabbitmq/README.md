@@ -40,7 +40,7 @@ type orderPublisher struct {
 }
 
 func (o *orderPublisher) Publish(ctx context.Context, body []byte) error {
-    conn, err := o.Ref().Client(ctx)
+    conn, err := o.Get().Client(ctx)
     if err != nil {
         return err
     }

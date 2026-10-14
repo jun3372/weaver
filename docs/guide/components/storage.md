@@ -40,7 +40,7 @@ type fileStore struct {
 }
 
 func (f *fileStore) Upload(ctx context.Context, object, path string) error {
-    cli, err := f.Ref().Client(ctx)
+    cli, err := f.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -49,7 +49,7 @@ func (f *fileStore) Upload(ctx context.Context, object, path string) error {
 }
 
 func (f *fileStore) Download(ctx context.Context, object string) ([]byte, error) {
-    cli, err := f.Ref().Client(ctx)
+    cli, err := f.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -67,7 +67,7 @@ func (f *fileStore) Download(ctx context.Context, object string) ([]byte, error)
 #### 创建 bucket
 
 ```go
-cli, _ := f.Ref().Client(ctx)
+cli, _ := f.Get().Client(ctx)
 
 exists, _ := cli.BucketExists(ctx, "mybucket")
 if !exists {
@@ -109,7 +109,7 @@ u, err := cli.PresignedGetObject(ctx, "mybucket", "photos/a.jpg", 15*time.Minute
 - `Shutdown`:minio client 内部管理连接,无需显式关闭
 
 ```go
-cli, err := f.Ref().Client(ctx)
+cli, err := f.Get().Client(ctx)
 if errors.Is(err, s3.ErrNotEnabled) {
     // s3 组件未启用,走降级逻辑
 }
@@ -155,7 +155,7 @@ type searchService struct {
 }
 
 func (s *searchService) Search(ctx context.Context, q string) ([]byte, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -176,7 +176,7 @@ func (s *searchService) Search(ctx context.Context, q string) ([]byte, error) {
 #### 写入文档
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 
 // esutil.NewJSONReader 把任意值序列化成请求体
 res, err := cli.Index(
@@ -284,7 +284,7 @@ type searchService struct {
 }
 
 func (s *searchService) Search(ctx context.Context, index, q string) ([]interface{}, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -301,7 +301,7 @@ func (s *searchService) Search(ctx context.Context, index, q string) ([]interfac
 #### 写入文档
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 
 // 写入是异步任务,返回 TaskInfo;可用 cli.WaitForTask 等待完成
 task, err := cli.Index("articles").AddDocumentsWithContext(ctx, []map[string]any{

@@ -40,7 +40,7 @@ type reportService struct {
 }
 
 func (s *reportService) Init(ctx context.Context) error {
-    return s.Ref().Register(ctx,
+    return s.Get().Register(ctx,
         gocronv2.CronJob("0 9 * * *", false), // 每天 9 点;第二参数 withSeconds=false
         gocronv2.NewTask(s.dailyReport),
         gocronv2.WithName("daily-report"),
@@ -60,13 +60,13 @@ func (s *reportService) dailyReport() {
 
 ```go
 // 每 30 分钟一次
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DurationJob(30*time.Minute),
     gocronv2.NewTask(s.syncData),
 )
 
 // 每天凌晨 2:30
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DailyJob(1, gocronv2.NewAtTimes(gocronv2.NewAtTime(2, 30, 0))),
     gocronv2.NewTask(s.cleanup),
 )
@@ -76,7 +76,7 @@ _ = s.Ref().Register(ctx,
 
 ```go
 // 上一次还没跑完时跳过本次触发
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DurationJob(time.Minute),
     gocronv2.NewTask(s.longPolling),
     gocronv2.WithSingletonMode(gocron.LimitModeReschedule),
@@ -88,7 +88,7 @@ _ = s.Ref().Register(ctx,
 `NewTask` 的函数第一个参数声明为 `context.Context` 即可收到任务上下文,scheduler 关闭时会被取消——长任务里监听它实现优雅退出:
 
 ```go
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DurationJob(time.Minute),
     gocronv2.NewTask(s.watch),
 )
@@ -110,7 +110,7 @@ func (s *reportService) watch(ctx context.Context) {
 需要按 tag 查询/移除任务、动态调整时,经 `Client(ctx)` 拿到 `gocronv2.Scheduler` 自行操作:
 
 ```go
-sched, err := s.Ref().Client(ctx)
+sched, err := s.Get().Client(ctx)
 if err != nil {
     return err
 }

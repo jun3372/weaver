@@ -1,6 +1,6 @@
 # 组件:中间件客户端集成
 
-`components/` 目录提供 15 个官方维护的中间件客户端组件。每个组件是一个独立 Go module,把常用中间件的客户端封装为 weaver 组件:声明 `weaver.Ref[xxx.T]` 即可注入,连接建立(`Init`)与优雅关闭(`Shutdown`)由框架生命周期托管。所有客户端库均为纯 Go 实现,`CGO_ENABLED=0` 交叉编译可用。
+`components/` 目录提供 17 个官方维护的中间件客户端组件。每个组件是一个独立 Go module,把常用中间件的客户端封装为 weaver 组件:声明 `weaver.Ref[xxx.T]` 即可注入,连接建立(`Init`)与优雅关闭(`Shutdown`)由框架生命周期托管。所有客户端库均为纯 Go 实现,`CGO_ENABLED=0` 交叉编译可用。
 
 ## 组件列表
 
@@ -40,7 +40,7 @@ type sessionStore struct {
 }
 
 func (s *sessionStore) Set(ctx context.Context, key, val string) error {
-    cli, err := s.Ref().Client(ctx) // 获取底层客户端
+    cli, err := s.Get().Client(ctx) // 获取底层客户端
     if err != nil {
         return err
     }

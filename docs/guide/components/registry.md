@@ -36,7 +36,7 @@ type serviceRegistry struct {
 }
 
 func (s *serviceRegistry) Services(ctx context.Context) (map[string][]string, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -49,7 +49,7 @@ func (s *serviceRegistry) Services(ctx context.Context) (map[string][]string, er
 #### KV 读写
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 kv := cli.KV()
 _, err := kv.Put(&api.KVPair{Key: "config/feature/switch", Value: []byte("on")}, nil)
 pair, _, err := kv.Get("config/feature/switch", nil)
@@ -119,7 +119,7 @@ etcd:
 ```go
 // Get 与 Put 均通过 *clientv3.Client 直接调用
 func (f *configFetcher) Get(ctx context.Context, key string) (string, error) {
-    cli, _ := f.Ref().Client(ctx)
+    cli, _ := f.Get().Client(ctx)
     resp, err := cli.Get(ctx, key)
     if err != nil || resp.Count == 0 { // key 不存在时 Count 为 0
         return "", err
@@ -133,7 +133,7 @@ func (f *configFetcher) Get(ctx context.Context, key string) (string, error) {
 #### Put 与前缀查询
 
 ```go
-cli, _ := f.Ref().Client(ctx)
+cli, _ := f.Get().Client(ctx)
 cli.Put(ctx, "cfg/db/host", "10.0.0.1")
 // 前缀查询
 resp, _ := cli.Get(ctx, "cfg/db/", clientv3.WithPrefix())
@@ -214,7 +214,7 @@ type serviceRegistry struct {
 
 // 服务发现:走 NamingClient
 func (s *serviceRegistry) Instances(ctx context.Context, service string) ([]vo.Instance, error) {
-    cli, _ := s.Ref().NamingClient(ctx)
+    cli, _ := s.Get().NamingClient(ctx)
     return cli.SelectInstances(vo.SelectAllInstancesParam{
         ServiceName: service, GroupName: "DEFAULT_GROUP",
     })
@@ -222,7 +222,7 @@ func (s *serviceRegistry) Instances(ctx context.Context, service string) ([]vo.I
 
 // 配置中心:走 ConfigClient
 func (s *serviceRegistry) LoadConfig(ctx context.Context, dataID string) (string, error) {
-    cli, _ := s.Ref().ConfigClient(ctx)
+    cli, _ := s.Get().ConfigClient(ctx)
     return cli.GetConfig(vo.ConfigParam{DataId: dataID, Group: "DEFAULT_GROUP"})
 }
 ```
@@ -232,7 +232,7 @@ func (s *serviceRegistry) LoadConfig(ctx context.Context, dataID string) (string
 #### 服务注册与注销
 
 ```go
-naming, _ := s.Ref().NamingClient(ctx)
+naming, _ := s.Get().NamingClient(ctx)
 // 注册实例:临时实例,客户端断开后自动摘除
 _ = naming.RegisterInstance(vo.RegisterInstanceParam{
     Ip: "10.0.0.5", Port: 8080, ServiceName: "order", GroupName: "DEFAULT_GROUP",
@@ -247,7 +247,7 @@ _ = naming.DeregisterInstance(vo.DeregisterInstanceParam{
 #### 配置监听
 
 ```go
-config, _ := s.Ref().ConfigClient(ctx)
+config, _ := s.Get().ConfigClient(ctx)
 _ = config.ListenConfig(vo.ListenParam{
     DataId: "order.yaml", Group: "DEFAULT_GROUP",
     OnChange: func(namespace, group, dataId, data string) {
@@ -294,7 +294,7 @@ zookeeper:
 ```go
 // zk.Conn 的 Get 返回数据与 Stat
 func (l *lockRepo) Get(ctx context.Context, path string) ([]byte, error) {
-    conn, err := l.Ref().Client(ctx)
+    conn, err := l.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -308,7 +308,7 @@ func (l *lockRepo) Get(ctx context.Context, path string) ([]byte, error) {
 #### 节点创建与 flag 常量
 
 ```go
-conn, _ := l.Ref().Client(ctx)
+conn, _ := l.Get().Client(ctx)
 // 持久节点(flag 为 0)
 conn.Create("/weaver", []byte{}, 0, zk.WorldACL(zk.PermAll))
 // 临时节点:会话断开自动删除,常用于服务注册

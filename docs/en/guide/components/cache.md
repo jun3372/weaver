@@ -38,7 +38,7 @@ type sessionStore struct {
 }
 
 func (s *sessionStore) Set(ctx context.Context, key, val string) error {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -46,7 +46,7 @@ func (s *sessionStore) Set(ctx context.Context, key, val string) error {
 }
 
 func (s *sessionStore) Get(ctx context.Context, key string) (string, error) {
-    cli, err := s.Ref().DB(ctx) // DB is equivalent to Client
+    cli, err := s.Get().DB(ctx) // DB is equivalent to Client
     if err != nil {
         return "", err
     }
@@ -59,7 +59,7 @@ func (s *sessionStore) Get(ctx context.Context, key string) (string, error) {
 #### Common Data Structures
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 
 // Hash
 cli.HSet(ctx, "user:1", "name", "alice", "age", 20)
@@ -111,7 +111,7 @@ cli.Publish(ctx, "events", "hello")
 - `Shutdown`: `Close` closes the client
 
 ```go
-cli, err := s.Ref().Client(ctx)
+cli, err := s.Get().Client(ctx)
 if errors.Is(err, redis.ErrNotEnabled) {
     // redis component not enabled; fall back to degraded logic
 }
@@ -155,7 +155,7 @@ type cacheRepo struct {
 }
 
 func (c *cacheRepo) Set(ctx context.Context, key string, val []byte) error {
-    cli, err := c.Ref().Client(ctx)
+    cli, err := c.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -163,7 +163,7 @@ func (c *cacheRepo) Set(ctx context.Context, key string, val []byte) error {
 }
 
 func (c *cacheRepo) Get(ctx context.Context, key string) ([]byte, error) {
-    cli, err := c.Ref().Client(ctx)
+    cli, err := c.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -183,7 +183,7 @@ func (c *cacheRepo) Get(ctx context.Context, key string) ([]byte, error) {
 #### Atomic Counters
 
 ```go
-cli, _ := c.Ref().Client(ctx)
+cli, _ := c.Get().Client(ctx)
 
 cli.Add(&memcache.Item{Key: "hits", Value: []byte("0")}) // initialize only if absent
 _, _ = cli.Increment("hits", 1)                          // atomic increment

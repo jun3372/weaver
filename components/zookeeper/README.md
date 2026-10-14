@@ -40,7 +40,7 @@ type leaderElection struct {
 }
 
 func (l *leaderElection) Register(ctx context.Context, path string) error {
-    conn, err := l.Ref().Client(ctx)
+    conn, err := l.Get().Client(ctx)
     if err != nil {
         return err
     }

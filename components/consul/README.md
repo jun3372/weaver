@@ -40,7 +40,7 @@ type serviceRegistry struct {
 }
 
 func (s *serviceRegistry) Services(ctx context.Context) (map[string][]string, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }

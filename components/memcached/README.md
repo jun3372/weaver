@@ -40,7 +40,7 @@ type hotCache struct {
 }
 
 func (h *hotCache) Get(ctx context.Context, key string) ([]byte, error) {
-    cli, err := h.Ref().Client(ctx)
+    cli, err := h.Get().Client(ctx)
     if err != nil {
         return nil, err
     }

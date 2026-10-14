@@ -40,7 +40,7 @@ type orderProducer struct {
 }
 
 func (o *orderProducer) Send(ctx context.Context, msg []byte) error {
-    cli, err := o.Ref().Client(ctx)
+    cli, err := o.Get().Client(ctx)
     if err != nil {
         return err
     }

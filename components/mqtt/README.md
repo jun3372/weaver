@@ -42,7 +42,7 @@ type deviceGateway struct {
 }
 
 func (g *deviceGateway) Publish(ctx context.Context, topic string, payload []byte) error {
-    cli, err := g.Ref().Client(ctx)
+    cli, err := g.Get().Client(ctx)
     if err != nil {
         return err
     }

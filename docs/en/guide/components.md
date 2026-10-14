@@ -1,6 +1,6 @@
 # Components: Middleware Client Integrations
 
-The `components/` directory provides 15 officially maintained middleware client components. Each component is an independent Go module that wraps the client of a common middleware into a weaver component: declare a `weaver.Ref[xxx.T]` and it gets injected — connection establishment (`Init`) and graceful shutdown (`Shutdown`) are managed by the framework lifecycle. All client libraries are pure Go implementations, so `CGO_ENABLED=0` cross-compilation works out of the box.
+The `components/` directory provides 17 officially maintained middleware client components. Each component is an independent Go module that wraps the client of a common middleware into a weaver component: declare a `weaver.Ref[xxx.T]` and it gets injected — connection establishment (`Init`) and graceful shutdown (`Shutdown`) are managed by the framework lifecycle. All client libraries are pure Go implementations, so `CGO_ENABLED=0` cross-compilation works out of the box.
 
 ## Component List
 
@@ -40,7 +40,7 @@ type sessionStore struct {
 }
 
 func (s *sessionStore) Set(ctx context.Context, key, val string) error {
-    cli, err := s.Ref().Client(ctx) // obtain the underlying client
+    cli, err := s.Get().Client(ctx) // obtain the underlying client
     if err != nil {
         return err
     }

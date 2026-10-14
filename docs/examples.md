@@ -88,7 +88,7 @@ go run . -conf weaver.yaml
 - `main.go`：主应用骨架
 - `weaver.yaml` / `weaver.toml`：配置文件骨架
 
-中间件客户端（redis、kafka、db 等 15 个组件）的使用教程见 [组件：中间件客户端集成](/guide/components)。
+中间件客户端（redis、kafka、db 等 17 个组件）的使用教程见 [组件：中间件客户端集成](/guide/components)。
 
 ## 相关阅读
 

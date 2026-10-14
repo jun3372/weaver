@@ -46,7 +46,7 @@ type serviceGateway struct {
 }
 
 func (g *serviceGateway) Instances(ctx context.Context, service string) ([]model.Instance, error) {
-    naming, err := g.Ref().NamingClient(ctx)
+    naming, err := g.Get().NamingClient(ctx)
     if err != nil {
         return nil, err
     }
@@ -58,7 +58,7 @@ func (g *serviceGateway) Instances(ctx context.Context, service string) ([]model
 }
 
 func (g *serviceGateway) LoadConfig(ctx context.Context, dataId, group string) (string, error) {
-    config, err := g.Ref().ConfigClient(ctx)
+    config, err := g.Get().ConfigClient(ctx)
     if err != nil {
         return "", err
     }

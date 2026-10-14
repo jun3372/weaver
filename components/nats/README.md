@@ -40,7 +40,7 @@ type eventBus struct {
 }
 
 func (e *eventBus) Publish(ctx context.Context, subject string, data []byte) error {
-    conn, err := e.Ref().Client(ctx)
+    conn, err := e.Get().Client(ctx)
     if err != nil {
         return err
     }

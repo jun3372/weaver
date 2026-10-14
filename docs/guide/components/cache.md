@@ -38,7 +38,7 @@ type sessionStore struct {
 }
 
 func (s *sessionStore) Set(ctx context.Context, key, val string) error {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -46,7 +46,7 @@ func (s *sessionStore) Set(ctx context.Context, key, val string) error {
 }
 
 func (s *sessionStore) Get(ctx context.Context, key string) (string, error) {
-    cli, err := s.Ref().DB(ctx) // DB 与 Client 等价
+    cli, err := s.Get().DB(ctx) // DB 与 Client 等价
     if err != nil {
         return "", err
     }
@@ -59,7 +59,7 @@ func (s *sessionStore) Get(ctx context.Context, key string) (string, error) {
 #### 常用数据结构
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 
 // Hash
 cli.HSet(ctx, "user:1", "name", "alice", "age", 20)
@@ -111,7 +111,7 @@ cli.Publish(ctx, "events", "hello")
 - `Shutdown`:`Close` 关闭客户端
 
 ```go
-cli, err := s.Ref().Client(ctx)
+cli, err := s.Get().Client(ctx)
 if errors.Is(err, redis.ErrNotEnabled) {
     // redis 组件未启用,走降级逻辑
 }
@@ -155,7 +155,7 @@ type cacheRepo struct {
 }
 
 func (c *cacheRepo) Set(ctx context.Context, key string, val []byte) error {
-    cli, err := c.Ref().Client(ctx)
+    cli, err := c.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -163,7 +163,7 @@ func (c *cacheRepo) Set(ctx context.Context, key string, val []byte) error {
 }
 
 func (c *cacheRepo) Get(ctx context.Context, key string) ([]byte, error) {
-    cli, err := c.Ref().Client(ctx)
+    cli, err := c.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -183,7 +183,7 @@ func (c *cacheRepo) Get(ctx context.Context, key string) ([]byte, error) {
 #### 原子计数器
 
 ```go
-cli, _ := c.Ref().Client(ctx)
+cli, _ := c.Get().Client(ctx)
 
 cli.Add(&memcache.Item{Key: "hits", Value: []byte("0")}) // 不存在才初始化
 _, _ = cli.Increment("hits", 1)                          // 原子自增

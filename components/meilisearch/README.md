@@ -42,7 +42,7 @@ type searchService struct {
 }
 
 func (s *searchService) Search(ctx context.Context, index, q string) ([]interface{}, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }

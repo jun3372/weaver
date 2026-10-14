@@ -34,7 +34,7 @@ type orderProducer struct {
 }
 
 func (o *orderProducer) Send(ctx context.Context, topic string, body []byte) error {
-    cli, err := o.Ref().Client(ctx)
+    cli, err := o.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -47,7 +47,7 @@ func (o *orderProducer) Send(ctx context.Context, topic string, body []byte) err
 #### Synchronous Producer
 
 ```go
-cli, _ := o.Ref().Client(ctx)
+cli, _ := o.Get().Client(ctx)
 prod, err := sarama.NewSyncProducerFromClient(sarama.NewConfig(), cli)
 if err != nil {
     return err
@@ -130,7 +130,7 @@ type orderPublisher struct {
 }
 
 func (o *orderPublisher) Publish(ctx context.Context, body []byte) error {
-    conn, err := o.Ref().Client(ctx)
+    conn, err := o.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -209,7 +209,7 @@ type eventBus struct {
 }
 
 func (e *eventBus) Publish(ctx context.Context, subject string, data []byte) error {
-    conn, err := e.Ref().Client(ctx)
+    conn, err := e.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -222,7 +222,7 @@ func (e *eventBus) Publish(ctx context.Context, subject string, data []byte) err
 #### Subscriptions and Queue Subscriptions
 
 ```go
-conn, _ := e.Ref().Client(ctx)
+conn, _ := e.Get().Client(ctx)
 // Plain subscription: every subscriber receives all messages
 sub, err := conn.Subscribe("events.order.*", func(m *nats.Msg) {
     fmt.Println(m.Subject, string(m.Data))
@@ -283,7 +283,7 @@ type taskDispatcher struct {
 }
 
 func (t *taskDispatcher) Dispatch(ctx context.Context, topic string, body []byte) error {
-    prod, err := t.Ref().Client(ctx)
+    prod, err := t.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -352,7 +352,7 @@ type deviceGateway struct {
 }
 
 func (g *deviceGateway) Publish(ctx context.Context, topic string, payload []byte) error {
-    cli, err := g.Ref().Client(ctx)
+    cli, err := g.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -367,7 +367,7 @@ func (g *deviceGateway) Publish(ctx context.Context, topic string, payload []byt
 #### Subscriptions and Callbacks
 
 ```go
-cli, _ := g.Ref().Client(ctx)
+cli, _ := g.Get().Client(ctx)
 token := cli.Subscribe("device/+/status", 1, func(_ mqtt.Client, msg mqtt.Message) {
     fmt.Println(msg.Topic(), string(msg.Payload()))
 })

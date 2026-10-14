@@ -40,7 +40,7 @@ type userRepo struct {
 }
 
 func (u *userRepo) Find(ctx context.Context, name string) (*User, error) {
-    cli, err := u.Ref().Client(ctx)
+    cli, err := u.Get().Client(ctx)
     if err != nil {
         return nil, err
     }

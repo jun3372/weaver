@@ -36,7 +36,7 @@ type serviceRegistry struct {
 }
 
 func (s *serviceRegistry) Services(ctx context.Context) (map[string][]string, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -49,7 +49,7 @@ func (s *serviceRegistry) Services(ctx context.Context) (map[string][]string, er
 #### KV Read & Write
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 kv := cli.KV()
 _, err := kv.Put(&api.KVPair{Key: "config/feature/switch", Value: []byte("on")}, nil)
 pair, _, err := kv.Get("config/feature/switch", nil)
@@ -119,7 +119,7 @@ Environment variable overrides: `WEAVER_ETCD_DSN`, `WEAVER_ETCD_ENABLED`.
 ```go
 // Both Get and Put are called directly through *clientv3.Client
 func (f *configFetcher) Get(ctx context.Context, key string) (string, error) {
-    cli, _ := f.Ref().Client(ctx)
+    cli, _ := f.Get().Client(ctx)
     resp, err := cli.Get(ctx, key)
     if err != nil || resp.Count == 0 { // Count is 0 when the key does not exist
         return "", err
@@ -133,7 +133,7 @@ func (f *configFetcher) Get(ctx context.Context, key string) (string, error) {
 #### Put and Prefix Queries
 
 ```go
-cli, _ := f.Ref().Client(ctx)
+cli, _ := f.Get().Client(ctx)
 cli.Put(ctx, "cfg/db/host", "10.0.0.1")
 // prefix query
 resp, _ := cli.Get(ctx, "cfg/db/", clientv3.WithPrefix())
@@ -214,7 +214,7 @@ type serviceRegistry struct {
 
 // Service discovery: via NamingClient
 func (s *serviceRegistry) Instances(ctx context.Context, service string) ([]vo.Instance, error) {
-    cli, _ := s.Ref().NamingClient(ctx)
+    cli, _ := s.Get().NamingClient(ctx)
     return cli.SelectInstances(vo.SelectAllInstancesParam{
         ServiceName: service, GroupName: "DEFAULT_GROUP",
     })
@@ -222,7 +222,7 @@ func (s *serviceRegistry) Instances(ctx context.Context, service string) ([]vo.I
 
 // Config center: via ConfigClient
 func (s *serviceRegistry) LoadConfig(ctx context.Context, dataID string) (string, error) {
-    cli, _ := s.Ref().ConfigClient(ctx)
+    cli, _ := s.Get().ConfigClient(ctx)
     return cli.GetConfig(vo.ConfigParam{DataId: dataID, Group: "DEFAULT_GROUP"})
 }
 ```
@@ -232,7 +232,7 @@ func (s *serviceRegistry) LoadConfig(ctx context.Context, dataID string) (string
 #### Service Registration & Deregistration
 
 ```go
-naming, _ := s.Ref().NamingClient(ctx)
+naming, _ := s.Get().NamingClient(ctx)
 // register instance: ephemeral instance, automatically removed after the client disconnects
 _ = naming.RegisterInstance(vo.RegisterInstanceParam{
     Ip: "10.0.0.5", Port: 8080, ServiceName: "order", GroupName: "DEFAULT_GROUP",
@@ -247,7 +247,7 @@ _ = naming.DeregisterInstance(vo.DeregisterInstanceParam{
 #### Config Listening
 
 ```go
-config, _ := s.Ref().ConfigClient(ctx)
+config, _ := s.Get().ConfigClient(ctx)
 _ = config.ListenConfig(vo.ListenParam{
     DataId: "order.yaml", Group: "DEFAULT_GROUP",
     OnChange: func(namespace, group, dataId, data string) {
@@ -294,7 +294,7 @@ Environment variable overrides: `WEAVER_ZOOKEEPER_DSN`, `WEAVER_ZOOKEEPER_ENABLE
 ```go
 // zk.Conn's Get returns both the data and the Stat
 func (l *lockRepo) Get(ctx context.Context, path string) ([]byte, error) {
-    conn, err := l.Ref().Client(ctx)
+    conn, err := l.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -308,7 +308,7 @@ func (l *lockRepo) Get(ctx context.Context, path string) ([]byte, error) {
 #### Node Creation and flag Constants
 
 ```go
-conn, _ := l.Ref().Client(ctx)
+conn, _ := l.Get().Client(ctx)
 // persistent node (flag is 0)
 conn.Create("/weaver", []byte{}, 0, zk.WorldACL(zk.PermAll))
 // ephemeral node: deleted automatically when the session ends; commonly used for service registration

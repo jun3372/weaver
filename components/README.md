@@ -37,7 +37,7 @@ type userRepo struct {
 }
 
 func (u *userRepo) Find(ctx context.Context, id int64) error {
-    cli, err := u.Ref().Client(ctx) // 每个组件均提供 Client(ctx)（db 为 WithContext）
+    cli, err := u.Get().Client(ctx) // 每个组件均提供 Client(ctx)（db 为 WithContext）
     if err != nil {
         return err // 未启用返回 ErrNotEnabled，未就绪返回 ErrNotReady
     }

@@ -40,7 +40,7 @@ type reportService struct {
 }
 
 func (s *reportService) Init(ctx context.Context) error {
-    return s.Ref().Register(ctx,
+    return s.Get().Register(ctx,
         gocronv2.CronJob("0 9 * * *", false), // every day at 9:00; second arg withSeconds=false
         gocronv2.NewTask(s.dailyReport),
         gocronv2.WithName("daily-report"),
@@ -60,13 +60,13 @@ Both the job definition and the execution body are native gocron types: `gocronv
 
 ```go
 // Every 30 minutes
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DurationJob(30*time.Minute),
     gocronv2.NewTask(s.syncData),
 )
 
 // Every day at 02:30
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DailyJob(1, gocronv2.NewAtTimes(gocronv2.NewAtTime(2, 30, 0))),
     gocronv2.NewTask(s.cleanup),
 )
@@ -76,7 +76,7 @@ _ = s.Ref().Register(ctx,
 
 ```go
 // Skip a trigger while the previous run is still executing
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DurationJob(time.Minute),
     gocronv2.NewTask(s.longPolling),
     gocronv2.WithSingletonMode(gocron.LimitModeReschedule),
@@ -88,7 +88,7 @@ _ = s.Ref().Register(ctx,
 Declare `context.Context` as the first parameter of the function passed to `NewTask` to receive the job context; it is canceled when the scheduler shuts down — listen to it in long-running jobs for graceful exit:
 
 ```go
-_ = s.Ref().Register(ctx,
+_ = s.Get().Register(ctx,
     gocronv2.DurationJob(time.Minute),
     gocronv2.NewTask(s.watch),
 )
@@ -110,7 +110,7 @@ func (s *reportService) watch(ctx context.Context) {
 To look up/remove jobs by tag or adjust dynamically, get the raw `gocronv2.Scheduler` via `Client(ctx)`:
 
 ```go
-sched, err := s.Ref().Client(ctx)
+sched, err := s.Get().Client(ctx)
 if err != nil {
     return err
 }

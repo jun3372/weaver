@@ -53,7 +53,7 @@ type userRepo struct {
 }
 
 func (u *userRepo) Find(ctx context.Context, id int64) (*User, error) {
-    gdb, err := u.Ref().WithContext(ctx) // 自动携带 ctx（trace 透传）
+    gdb, err := u.Get().WithContext(ctx) // 自动携带 ctx（trace 透传）
     if err != nil {
         return nil, err
     }
@@ -65,7 +65,7 @@ func (u *userRepo) Find(ctx context.Context, id int64) (*User, error) {
 }
 
 func (u *userRepo) Transfer(ctx context.Context, from, to int64) error {
-    return u.Ref().Transaction(ctx, func(tx *gorm.DB) error {
+    return u.Get().Transaction(ctx, func(tx *gorm.DB) error {
         // tx 已携带 ctx
         return nil
     })

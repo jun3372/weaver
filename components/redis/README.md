@@ -40,7 +40,7 @@ type sessionStore struct {
 }
 
 func (s *sessionStore) Set(ctx context.Context, key, val string) error {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return err
     }

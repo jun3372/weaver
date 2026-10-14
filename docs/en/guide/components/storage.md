@@ -40,7 +40,7 @@ type fileStore struct {
 }
 
 func (f *fileStore) Upload(ctx context.Context, object, path string) error {
-    cli, err := f.Ref().Client(ctx)
+    cli, err := f.Get().Client(ctx)
     if err != nil {
         return err
     }
@@ -49,7 +49,7 @@ func (f *fileStore) Upload(ctx context.Context, object, path string) error {
 }
 
 func (f *fileStore) Download(ctx context.Context, object string) ([]byte, error) {
-    cli, err := f.Ref().Client(ctx)
+    cli, err := f.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -67,7 +67,7 @@ func (f *fileStore) Download(ctx context.Context, object string) ([]byte, error)
 #### Creating a Bucket
 
 ```go
-cli, _ := f.Ref().Client(ctx)
+cli, _ := f.Get().Client(ctx)
 
 exists, _ := cli.BucketExists(ctx, "mybucket")
 if !exists {
@@ -109,7 +109,7 @@ u, err := cli.PresignedGetObject(ctx, "mybucket", "photos/a.jpg", 15*time.Minute
 - `Shutdown`: the minio client manages connections internally; no explicit close needed
 
 ```go
-cli, err := f.Ref().Client(ctx)
+cli, err := f.Get().Client(ctx)
 if errors.Is(err, s3.ErrNotEnabled) {
     // s3 component not enabled; fall back to degraded logic
 }
@@ -155,7 +155,7 @@ type searchService struct {
 }
 
 func (s *searchService) Search(ctx context.Context, q string) ([]byte, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -176,7 +176,7 @@ func (s *searchService) Search(ctx context.Context, q string) ([]byte, error) {
 #### Indexing Documents
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 
 // esutil.NewJSONReader serializes any value into a request body
 res, err := cli.Index(
@@ -284,7 +284,7 @@ type searchService struct {
 }
 
 func (s *searchService) Search(ctx context.Context, index, q string) ([]interface{}, error) {
-    cli, err := s.Ref().Client(ctx)
+    cli, err := s.Get().Client(ctx)
     if err != nil {
         return nil, err
     }
@@ -301,7 +301,7 @@ func (s *searchService) Search(ctx context.Context, index, q string) ([]interfac
 #### Indexing Documents
 
 ```go
-cli, _ := s.Ref().Client(ctx)
+cli, _ := s.Get().Client(ctx)
 
 // Writes are async tasks returning TaskInfo; use cli.WaitForTask to await completion
 task, err := cli.Index("articles").AddDocumentsWithContext(ctx, []map[string]any{

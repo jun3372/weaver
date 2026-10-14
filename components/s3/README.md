@@ -51,7 +51,7 @@ type fileStore struct {
 }
 
 func (f *fileStore) Upload(ctx context.Context, object, path string) error {
-    cli, err := f.Ref().Client(ctx)
+    cli, err := f.Get().Client(ctx)
     if err != nil {
         return err
     }
