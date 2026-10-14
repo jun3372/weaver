@@ -1,0 +1,43 @@
+# Weaver
+
+> 轻量级 Go 组件化应用框架：基于接口的组件 + 依赖注入 + 声明式配置 + HTTP/TCP/UDP 服务托管，业务代码只保留逻辑本身。
+
+## AI 智能体规范
+
+- [LLM.md — 智能体开发规范](https://jun3372.github.io/weaver/LLM.html):面向 AI 编码智能体的框架使用规范（组件/DI/生命周期/配置/Listener/组件库/编码规范），使用本框架写代码前必读
+
+## 文档（中文）
+
+- [快速开始](https://jun3372.github.io/weaver/guide/getting-started.html):最小可运行应用与 CLI 一览
+- [核心概念](https://jun3372.github.io/weaver/guide/concepts.html):组件与依赖注入模型
+- [配置管理](https://jun3372.github.io/weaver/guide/config.html):conf 标签、default tag、环境变量覆盖与热更新
+- [Listener](https://jun3372.github.io/weaver/guide/listener.html):HTTP / TCP / UDP 服务托管
+- [日志系统](https://jun3372.github.io/weaver/guide/logger.html):slog 封装与 trace/span 注入
+- [生命周期管理](https://jun3372.github.io/weaver/guide/lifecycle.html):Init / Start / Shutdown 语义与错误契约
+- [CLI 工具](https://jun3372.github.io/weaver/guide/generate.html):weaver init / make / generate / version
+- [OpenTelemetry 集成](https://jun3372.github.io/weaver/guide/opentelemetry.html):trace 上下文透传
+- [组件：中间件客户端集成](https://jun3372.github.io/weaver/guide/components.html):官方组件库总览（db / redis / kafka 等 17 个）
+- [数据库组件](https://jun3372.github.io/weaver/guide/components/database.html):db / mongodb 教程
+- [缓存组件](https://jun3372.github.io/weaver/guide/components/cache.html):redis / memcached 教程
+- [消息队列组件](https://jun3372.github.io/weaver/guide/components/messaging.html):kafka / rabbitmq / nats / nsq / mqtt 教程
+- [注册与配置中心组件](https://jun3372.github.io/weaver/guide/components/registry.html):consul / etcd / nacos / zookeeper 教程
+- [存储与搜索组件](https://jun3372.github.io/weaver/guide/components/storage.html):s3 / elasticsearch / meilisearch 教程
+- [任务调度组件](https://jun3372.github.io/weaver/guide/components/scheduler.html):gocron 教程
+- [示例](https://jun3372.github.io/weaver/examples.html):examples 目录示例说明
+
+## Docs (English)
+
+- [Getting Started](https://jun3372.github.io/weaver/en/guide/getting-started.html)
+- [Core Concepts](https://jun3372.github.io/weaver/en/guide/concepts.html)
+- [Configuration](https://jun3372.github.io/weaver/en/guide/config.html)
+- [Listener](https://jun3372.github.io/weaver/en/guide/listener.html)
+- [Logging](https://jun3372.github.io/weaver/en/guide/logger.html)
+- [Lifecycle Management](https://jun3372.github.io/weaver/en/guide/lifecycle.html)
+- [CLI Tools](https://jun3372.github.io/weaver/en/guide/generate.html)
+- [OpenTelemetry Integration](https://jun3372.github.io/weaver/en/guide/opentelemetry.html)
+- [Components Overview](https://jun3372.github.io/weaver/en/guide/components.html)
+- [Examples](https://jun3372.github.io/weaver/en/examples.html)
+
+## 仓库
+
+- [GitHub](https://github.com/jun3372/weaver):源码与 issue（仓库根目录亦有 LLM.md / AGENTS.md）
