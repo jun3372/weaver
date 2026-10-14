@@ -32,8 +32,8 @@ github.com/jcmturner/gokrb5/v8 v8.4.4 h1:x1Sv4HaTpepFkXbt2IkL29DXRf8sOfZXo8eRKh6
 github.com/jcmturner/gokrb5/v8 v8.4.4/go.mod h1:1btQEpgT6k+unzCwX1KdWMEwPPkkgBtP+F6aCACiMrs=
 github.com/jcmturner/rpc/v2 v2.0.3 h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZY=
 github.com/jcmturner/rpc/v2 v2.0.3/go.mod h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=
-github.com/jun3372/weaver v0.1.8 h1:hb8xr1YgEtGGPiUycxpX1NN/Byl5A4HJK0Mckddx0Sg=
-github.com/jun3372/weaver v0.1.8/go.mod h1:V51vCN3MwvhYkM2haQzkMCtDBm1irB+NcSIgj6ZWRqQ=
+github.com/jun3372/weaver v0.1.9 h1:HeTYrkezDlZL99OHJK/MxbRLetR6lR/Qbtr9w3RmqNs=
+github.com/jun3372/weaver v0.1.9/go.mod h1:V51vCN3MwvhYkM2haQzkMCtDBm1irB+NcSIgj6ZWRqQ=
 github.com/klauspost/compress v1.20.1 h1:T7kKElXUMXrUJ2E9QhQhxFtcK5rPyLdsGZvdbLMPdiQ=
 github.com/klauspost/compress v1.20.1/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=

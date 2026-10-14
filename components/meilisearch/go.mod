@@ -3,7 +3,7 @@ module github.com/jun3372/weaver/components/meilisearch
 go 1.27
 
 require (
-	github.com/jun3372/weaver v0.1.8
+	github.com/jun3372/weaver v0.1.9
 	github.com/meilisearch/meilisearch-go v0.36.3
 	github.com/pkg/errors v0.9.1
 )
