@@ -64,6 +64,7 @@ export default defineConfig({
         nav: [
           { text: '指南', link: '/guide/getting-started' },
           { text: '组件', link: '/guide/components' },
+          { text: '智能体规范', link: '/LLM' },
           { text: '示例', link: '/examples' },
           { text: 'GitHub', link: 'https://github.com/jun3372/weaver' },
         ],
@@ -92,6 +93,7 @@ export default defineConfig({
         nav: [
           { text: 'Guide', link: '/en/guide/getting-started' },
           { text: 'Components', link: '/en/guide/components' },
+          { text: 'Agent Guide', link: '/LLM' },
           { text: 'Examples', link: '/en/examples' },
           { text: 'GitHub', link: 'https://github.com/jun3372/weaver' },
         ],

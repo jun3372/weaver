@@ -462,6 +462,10 @@ go test ./examples/http/ -stress -run Stress
 
 完整文档（中英双语）见 **[jun3372.github.io/weaver](https://jun3372.github.io/weaver/)**。
 
+## AI 智能体规范
+
+面向 AI 编码智能体的框架使用开发规范见 [LLM.md](LLM.md)（在线版：[jun3372.github.io/weaver/LLM](https://jun3372.github.io/weaver/LLM)），或访问 [llms.txt](https://jun3372.github.io/weaver/llms.txt) 获取全部文档索引。
+
 ## 贡献
 
 欢迎提交 Issue 与 Pull Request。提交前请确保以下命令全部通过：
