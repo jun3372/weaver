@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -35,6 +36,9 @@ func (l *slogLogger) Info(ctx context.Context, msg string, args ...any) {
 	if l.level < gormlogger.Info {
 		return
 	}
+	if len(args) > 0 {
+		msg = fmt.Sprintf(msg, args...)
+	}
 	l.logger(ctx).InfoContext(ctx, msg, args...)
 }
 
@@ -42,12 +46,18 @@ func (l *slogLogger) Warn(ctx context.Context, msg string, args ...any) {
 	if l.level < gormlogger.Warn {
 		return
 	}
+	if len(args) > 0 {
+		msg = fmt.Sprintf(msg, args...)
+	}
 	l.logger(ctx).WarnContext(ctx, msg, args...)
 }
 
 func (l *slogLogger) Error(ctx context.Context, msg string, args ...any) {
 	if l.level < gormlogger.Error {
 		return
+	}
+	if len(args) > 0 {
+		msg = fmt.Sprintf(msg, args...)
 	}
 	l.logger(ctx).ErrorContext(ctx, msg, args...)
 }
