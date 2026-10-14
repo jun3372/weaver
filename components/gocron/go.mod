@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/go-co-op/gocron/v2 v2.22.0
-	github.com/jun3372/weaver v0.1.8
+	github.com/jun3372/weaver v0.1.9
 	github.com/pkg/errors v0.9.1
 )
 
