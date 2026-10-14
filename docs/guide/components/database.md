@@ -9,11 +9,11 @@ Weaver 的数据库客户端组件,基于 [GORM](https://github.com/go-gorm/gorm
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/db
+go get github.com/jun3372/weaver/components/db
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/db" // 匿名导入完成组件注册
+import _ "github.com/jun3372/weaver/components/db" // 匿名导入完成组件注册
 ```
 
 ### 配置
@@ -106,7 +106,7 @@ func (u *userRepo) Init(ctx context.Context) error {
 ```go
 gdb, err := u.Ref().WithContext(ctx)
 if errors.Is(err, db.ErrNotEnabled) {
-    // db 插件未启用,走降级逻辑(如只读缓存)
+    // db 组件未启用,走降级逻辑(如只读缓存)
 }
 // 其余哨兵错误:db.ErrNotReady(未就绪)、db.ErrInvalidDSN、db.ErrInvalidScheme
 ```
@@ -118,11 +118,11 @@ Weaver 的 MongoDB 客户端组件,基于 [mongo-driver/v2](https://github.com/m
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/mongodb
+go get github.com/jun3372/weaver/components/mongodb
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/mongodb"
+import _ "github.com/jun3372/weaver/components/mongodb"
 ```
 
 ### 配置
@@ -247,7 +247,7 @@ return err
 ```go
 cli, err := u.Ref().Client(ctx)
 if errors.Is(err, mongodb.ErrNotEnabled) {
-    // mongodb 插件未启用,走降级逻辑
+    // mongodb 组件未启用,走降级逻辑
 }
 // 其余哨兵错误:mongodb.ErrNotReady
 ```
@@ -256,5 +256,5 @@ if errors.Is(err, mongodb.ErrNotEnabled) {
 
 ## 相关阅读
 
-- [插件总览](/guide/plugins)
+- [组件总览](/guide/components)
 - [配置管理](/guide/config)

@@ -7,9 +7,9 @@ The Consul client component for Weaver, based on the official [hashicorp/consul/
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/consul
+go get github.com/jun3372/weaver/components/consul
 # Anonymous import of the main package completes component registration:
-# import _ "github.com/jun3372/weaver/plugins/consul"
+# import _ "github.com/jun3372/weaver/components/consul"
 ```
 
 ### Configuration
@@ -22,7 +22,7 @@ consul:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `http://127.0.0.1:8500` | Consul HTTP API address; scheme only supports `http` / `https`; userinfo is converted to Basic Auth, e.g. `http://admin:secret@127.0.0.1:8500` |
 
 Environment variable overrides: `WEAVER_CONSUL_DSN`, `WEAVER_CONSUL_ENABLED`.
@@ -94,9 +94,9 @@ The etcd client component for Weaver, based on the official [etcd client/v3](htt
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/etcd
+go get github.com/jun3372/weaver/components/etcd
 # Anonymous import of the main package completes component registration:
-# import _ "github.com/jun3372/weaver/plugins/etcd"
+# import _ "github.com/jun3372/weaver/components/etcd"
 ```
 
 ### Configuration
@@ -109,7 +109,7 @@ etcd:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `etcd://localhost:2379` | Supports multiple endpoints such as `etcd://host1:2379,host2:2379` (the client handles load balancing and failover automatically) |
 
 Environment variable overrides: `WEAVER_ETCD_DSN`, `WEAVER_ETCD_ENABLED`.
@@ -173,7 +173,7 @@ go func() {
 ### Lifecycle & Errors
 
 - `Init`: logs and returns immediately when disabled; parses the DSN into an endpoint list, then calls `clientv3.New` (DialTimeout 5s) and probes the first endpoint via `Status`, closing the client automatically on failure; on `Shutdown`, `Close` closes the client
-- Common errors: `ErrNotEnabled`/`ErrNotReady` (plugin disabled/not ready), `ErrInvalidDSN` (scheme is not `etcd` or no usable endpoint)
+- Common errors: `ErrNotEnabled`/`ErrNotReady` (component disabled/not ready), `ErrInvalidDSN` (scheme is not `etcd` or no usable endpoint)
 
 ## nacos
 
@@ -182,9 +182,9 @@ The Nacos client component for Weaver, based on the official [nacos-sdk-go/v2](h
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/nacos
+go get github.com/jun3372/weaver/components/nacos
 # Anonymous import of the main package completes component registration:
-# import _ "github.com/jun3372/weaver/plugins/nacos"
+# import _ "github.com/jun3372/weaver/components/nacos"
 ```
 
 ### Configuration
@@ -197,7 +197,7 @@ nacos:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `nacos://localhost:8848` | Supports the form `nacos://user:pass@host1:8848,host2:8848?namespaceId=xxx`: userinfo becomes username/password, the default port is 8848, and query parameters specify the namespace |
 
 Environment variable overrides: `WEAVER_NACOS_DSN`, `WEAVER_NACOS_ENABLED`.
@@ -259,7 +259,7 @@ _ = config.ListenConfig(vo.ListenParam{
 ### Lifecycle & Errors
 
 - `Init`: logs and returns immediately when disabled; parses the DSN to build the shared `ClientConfig` and `ServerConfigs`, then creates the two clients in sequence, rolling back the first if the second fails; then fetches the service list to probe liveness (an empty list also counts as success); on `Shutdown`, `CloseClient` closes both in sequence
-- Common errors: `ErrNotEnabled`/`ErrNotReady` (plugin disabled/not ready), `ErrInvalidDSN`, `ErrInvalidScheme`
+- Common errors: `ErrNotEnabled`/`ErrNotReady` (component disabled/not ready), `ErrInvalidDSN`, `ErrInvalidScheme`
 
 ## zookeeper
 
@@ -268,10 +268,10 @@ The ZooKeeper client component for Weaver, based on [go-zookeeper/zk](https://gi
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/zookeeper
+go get github.com/jun3372/weaver/components/zookeeper
 
 # Anonymous import of the main package completes component registration:
-# import _ "github.com/jun3372/weaver/plugins/zookeeper"
+# import _ "github.com/jun3372/weaver/components/zookeeper"
 ```
 
 ### Configuration
@@ -284,7 +284,7 @@ zookeeper:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `zk://localhost:2181` | Supports multi-host cluster addresses such as `zk://host1:2181,host2:2181` |
 
 Environment variable overrides: `WEAVER_ZOOKEEPER_DSN`, `WEAVER_ZOOKEEPER_ENABLED`.
@@ -342,9 +342,9 @@ if exists {
 ### Lifecycle & Errors
 
 - `Init`: logs and returns immediately when disabled; parses the DSN into a host list and calls `zk.Connect` (session timeout 5s, with automatic connection retry internally); if the connection does not reach the `StateConnected` state, it calls `Close` and returns `ErrNotReady`; on `Shutdown`, `Close` closes the connection
-- Common errors: `zk.ErrNodeExists` (node already exists), `zk.ErrNoNode` (node does not exist), `ErrNotEnabled`/`ErrNotReady` (plugin disabled/not ready), `ErrInvalidDSN`
+- Common errors: `zk.ErrNodeExists` (node already exists), `zk.ErrNoNode` (node does not exist), `ErrNotEnabled`/`ErrNotReady` (component disabled/not ready), `ErrInvalidDSN`
 
 ## Further Reading
 
-- [Plugins Overview](/en/guide/plugins)
+- [Components Overview](/en/guide/components)
 - [Configuration](/en/guide/config)

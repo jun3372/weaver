@@ -9,11 +9,11 @@ The component interface `db.T` provides three methods: `WithContext(ctx)` return
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/db
+go get github.com/jun3372/weaver/components/db
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/db" // anonymous import completes component registration
+import _ "github.com/jun3372/weaver/components/db" // anonymous import completes component registration
 ```
 
 ### Configuration
@@ -28,7 +28,7 @@ db:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `file:data/data.db?cache=shared&mode=rwc&_busy_timeout=5000&_journal_mode=WAL` | Connection string; the scheme determines the dialect, see the table below |
 | `GormConfig` | `{}` | Passed through to `*gorm.Config` (logging, naming strategy, timeouts, etc.) |
 
@@ -106,7 +106,7 @@ func (u *userRepo) Init(ctx context.Context) error {
 ```go
 gdb, err := u.Ref().WithContext(ctx)
 if errors.Is(err, db.ErrNotEnabled) {
-    // db plugin not enabled, fall back to a degraded path (e.g. read-only cache)
+    // db component not enabled, fall back to a degraded path (e.g. read-only cache)
 }
 // Other sentinel errors: db.ErrNotReady (not ready), db.ErrInvalidDSN, db.ErrInvalidScheme
 ```
@@ -118,11 +118,11 @@ Weaver's MongoDB client component, built on [mongo-driver/v2](https://github.com
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/mongodb
+go get github.com/jun3372/weaver/components/mongodb
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/mongodb"
+import _ "github.com/jun3372/weaver/components/mongodb"
 ```
 
 ### Configuration
@@ -135,7 +135,7 @@ mongodb:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `mongodb://localhost:27017` | Connection string; supports URI parameters for replica sets, authentication, read/write preference, etc. |
 
 Environment variable overrides: `WEAVER_MONGODB_DSN`, `WEAVER_MONGODB_ENABLED`.
@@ -247,7 +247,7 @@ return err
 ```go
 cli, err := u.Ref().Client(ctx)
 if errors.Is(err, mongodb.ErrNotEnabled) {
-    // mongodb plugin not enabled, fall back to a degraded path
+    // mongodb component not enabled, fall back to a degraded path
 }
 // Other sentinel errors: mongodb.ErrNotReady
 ```
@@ -256,5 +256,5 @@ Note: `mongo.Connect` uses lazy connection, so business errors often surface on 
 
 ## Further Reading
 
-- [Plugins Overview](/en/guide/plugins)
+- [Components Overview](/en/guide/components)
 - [Configuration](/en/guide/config)

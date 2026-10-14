@@ -7,11 +7,11 @@ Weaver's Redis client component, built on [go-redis/v9](https://github.com/redis
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/redis
+go get github.com/jun3372/weaver/components/redis
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/redis" // blank import completes component registration
+import _ "github.com/jun3372/weaver/components/redis" // blank import completes component registration
 ```
 
 ### Configuration
@@ -24,7 +24,7 @@ redis:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `redis://localhost:6379/0` | Redis URL; supports `redis://user:pass@host:port/db` and `rediss://` (TLS) |
 
 Environment variable overrides: `WEAVER_REDIS_DSN`, `WEAVER_REDIS_ENABLED`.
@@ -113,7 +113,7 @@ cli.Publish(ctx, "events", "hello")
 ```go
 cli, err := s.Ref().Client(ctx)
 if errors.Is(err, redis.ErrNotEnabled) {
-    // redis plugin not enabled; fall back to degraded logic
+    // redis component not enabled; fall back to degraded logic
 }
 ```
 
@@ -124,11 +124,11 @@ Weaver's Memcached client component, built on [gomemcache](https://github.com/br
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/memcached
+go get github.com/jun3372/weaver/components/memcached
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/memcached"
+import _ "github.com/jun3372/weaver/components/memcached"
 ```
 
 ### Configuration
@@ -141,7 +141,7 @@ memcached:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `memcache://localhost:11211` | Supports multi-node `memcache://host1:11211,host2:11211` (the client shards automatically via consistent hashing) |
 
 Environment variable overrides: `WEAVER_MEMCACHED_DSN`, `WEAVER_MEMCACHED_ENABLED`.
@@ -201,9 +201,9 @@ items, err := cli.GetMulti([]string{"k1", "k2", "k3"})
 
 - `Init`: if not enabled, logs and returns immediately; parses the multi-node addresses from the DSN, creates the client with `memcache.New` and probes with `Ping`
 - `Shutdown`: the gomemcache client manages connections internally; no explicit close needed
-- Common errors: `memcache.ErrCacheMiss` (key not found), `ErrNotEnabled`/`ErrNotReady` (plugin not enabled / not ready)
+- Common errors: `memcache.ErrCacheMiss` (key not found), `ErrNotEnabled`/`ErrNotReady` (component not enabled / not ready)
 
 ## Further Reading
 
-- [Plugins Overview](/en/guide/plugins)
+- [Components Overview](/en/guide/components)
 - [Configuration](/en/guide/config)

@@ -1,6 +1,6 @@
 # 消息队列:kafka / rabbitmq / nats / nsq / mqtt
 
-Weaver 为五种常见消息中间件各提供一个客户端组件插件,遵循同一套约定:配置只暴露 `Enabled` 与连接 DSN(`mqtt` 额外有 `ClientID`),声明 `weaver.Ref[xxx.T]` 即可注入底层客户端,连接建立、探活与优雅关闭由框架生命周期托管。`Client(ctx)` 在未启用时返回 `ErrNotEnabled`,未就绪时返回 `ErrNotReady`,业务代码可用 `errors.Is` 统一降级。插件只托管客户端初始化,发布 / 订阅等业务语义按底层库原生 API 编写。
+Weaver 为五种常见消息中间件各提供一个客户端组件组件,遵循同一套约定:配置只暴露 `Enabled` 与连接 DSN(`mqtt` 额外有 `ClientID`),声明 `weaver.Ref[xxx.T]` 即可注入底层客户端,连接建立、探活与优雅关闭由框架生命周期托管。`Client(ctx)` 在未启用时返回 `ErrNotEnabled`,未就绪时返回 `ErrNotReady`,业务代码可用 `errors.Is` 统一降级。组件只托管客户端初始化,发布 / 订阅等业务语义按底层库原生 API 编写。
 
 ## kafka
 
@@ -8,7 +8,7 @@ Weaver 的 Kafka 客户端组件,基于 [IBM/sarama](https://github.com/IBM/sara
 
 ### 安装
 
-安装:`go get github.com/jun3372/weaver/plugins/kafka`,在主包匿名导入 `import _ "github.com/jun3372/weaver/plugins/kafka"` 完成组件注册。
+安装:`go get github.com/jun3372/weaver/components/kafka`,在主包匿名导入 `import _ "github.com/jun3372/weaver/components/kafka"` 完成组件注册。
 
 ### 配置
 
@@ -96,7 +96,7 @@ func (h *orderHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sara
 
 - `Init`:未启用时打日志直接返回;解析 DSN 得到 broker 列表后 `sarama.NewClient` 建连,并 `RefreshMetadata` 探活,失败时自动 `Close` 并返回错误
 - `Shutdown`:`Close` 关闭客户端
-- 常见错误:`ErrNotEnabled` / `ErrNotReady`(插件未启用/未就绪)、`ErrInvalidDSN`(DSN 非 `kafka://` scheme 或无可用 broker)
+- 常见错误:`ErrNotEnabled` / `ErrNotReady`(组件未启用/未就绪)、`ErrInvalidDSN`(DSN 非 `kafka://` scheme 或无可用 broker)
 
 ## rabbitmq
 
@@ -104,7 +104,7 @@ Weaver 的 RabbitMQ 客户端组件,基于 [amqp091-go](https://github.com/rabbi
 
 ### 安装
 
-安装:`go get github.com/jun3372/weaver/plugins/rabbitmq`,在主包匿名导入 `import _ "github.com/jun3372/weaver/plugins/rabbitmq"` 完成组件注册。
+安装:`go get github.com/jun3372/weaver/components/rabbitmq`,在主包匿名导入 `import _ "github.com/jun3372/weaver/components/rabbitmq"` 完成组件注册。
 
 ### 配置
 
@@ -175,7 +175,7 @@ for d := range msgs {
 
 - `Init`:未启用时打日志直接返回;`amqp.Dial` 建连后试开一条 Channel 探活,失败自动 `Close` 并返回错误
 - `Shutdown`:`Close` 关闭连接
-- 常见错误:`ErrNotEnabled` / `ErrNotReady`(插件未启用/未就绪);Connection 复用框架托管的同一实例,Channel 每次操作自行创建
+- 常见错误:`ErrNotEnabled` / `ErrNotReady`(组件未启用/未就绪);Connection 复用框架托管的同一实例,Channel 每次操作自行创建
 
 ## nats
 
@@ -183,7 +183,7 @@ Weaver 的 NATS 客户端组件,基于官方 [nats.go](https://github.com/nats-i
 
 ### 安装
 
-安装:`go get github.com/jun3372/weaver/plugins/nats`,在主包匿名导入 `import _ "github.com/jun3372/weaver/plugins/nats"` 完成组件注册。
+安装:`go get github.com/jun3372/weaver/components/nats`,在主包匿名导入 `import _ "github.com/jun3372/weaver/components/nats"` 完成组件注册。
 
 ### 配置
 
@@ -249,7 +249,7 @@ conn.Subscribe("svc.user.get", func(m *nats.Msg) {
 
 - `Init`:未启用时打日志直接返回;`nats.Connect`(内部完成 PING/PONG 握手)后 `FlushTimeout` 二次探活,失败自动 `Close` 并返回错误
 - `Shutdown`:`Drain` 优先于 `Close`,冲刷残留订阅后再退出
-- 常见错误:`ErrNotEnabled` / `ErrNotReady`(插件未启用/未就绪)
+- 常见错误:`ErrNotEnabled` / `ErrNotReady`(组件未启用/未就绪)
 
 ## nsq
 
@@ -257,7 +257,7 @@ Weaver 的 NSQ 客户端组件,基于官方 [go-nsq](https://github.com/nsqio/go
 
 ### 安装
 
-安装:`go get github.com/jun3372/weaver/plugins/nsq`,在主包匿名导入 `import _ "github.com/jun3372/weaver/plugins/nsq"` 完成组件注册。
+安装:`go get github.com/jun3372/weaver/components/nsq`,在主包匿名导入 `import _ "github.com/jun3372/weaver/components/nsq"` 完成组件注册。
 
 ### 配置
 
@@ -293,7 +293,7 @@ func (t *taskDispatcher) Dispatch(ctx context.Context, topic string, body []byte
 
 ### 进阶场景
 
-插件只托管 Producer;Consumer 涉及 topic/channel 语义,按业务自行基于 `nsq.NewConsumer` 创建,注意 `AddHandler` 必须在连接之前调用。生产侧另有 `prod.DeferredPublish(topic, delay, body)` 延迟投递(常用于重试退避)与 `prod.MultiPublish(topic, [][]byte{...})` 批量发布:
+组件只托管 Producer;Consumer 涉及 topic/channel 语义,按业务自行基于 `nsq.NewConsumer` 创建,注意 `AddHandler` 必须在连接之前调用。生产侧另有 `prod.DeferredPublish(topic, delay, body)` 延迟投递(常用于重试退避)与 `prod.MultiPublish(topic, [][]byte{...})` 批量发布:
 
 ```go
 cfg := nsq.NewConfig()
@@ -316,7 +316,7 @@ defer consumer.Stop()
 
 - `Init`:未启用时打日志直接返回;解析 DSN 后 `nsq.NewProducer` 建连,并 `Ping` 探活,失败自动 `Stop` 并返回错误
 - `Shutdown`:`Stop` 由库内保证在途消息处理完再退出
-- 常见错误:`ErrNotEnabled` / `ErrNotReady`(插件未启用/未就绪)、`ErrInvalidDSN`(DSN 非 `nsq://` scheme 或无可用地址)
+- 常见错误:`ErrNotEnabled` / `ErrNotReady`(组件未启用/未就绪)、`ErrInvalidDSN`(DSN 非 `nsq://` scheme 或无可用地址)
 
 ## mqtt
 
@@ -324,7 +324,7 @@ Weaver 的 MQTT 客户端组件,基于 [paho.mqtt.golang](https://github.com/ecl
 
 ### 安装
 
-安装:`go get github.com/jun3372/weaver/plugins/mqtt`,在主包匿名导入 `import _ "github.com/jun3372/weaver/plugins/mqtt"` 完成组件注册。
+安装:`go get github.com/jun3372/weaver/components/mqtt`,在主包匿名导入 `import _ "github.com/jun3372/weaver/components/mqtt"` 完成组件注册。
 
 ### 配置
 
@@ -392,9 +392,9 @@ defer cli.Unsubscribe("device/+/status")
 
 - `Init`:未启用时打日志直接返回;校验 DSN scheme 后建连(5 秒超时),失败自动 `Disconnect` 并返回错误
 - `Shutdown`:`Disconnect(250ms)`,给在途消息留冲刷时间
-- 常见错误:`ErrNotEnabled` / `ErrNotReady`(插件未启用/未就绪)、`ErrInvalidDSN` / `ErrInvalidScheme`(DSN 解析失败或 scheme 不受支持)
+- 常见错误:`ErrNotEnabled` / `ErrNotReady`(组件未启用/未就绪)、`ErrInvalidDSN` / `ErrInvalidScheme`(DSN 解析失败或 scheme 不受支持)
 
 ## 相关阅读
 
-- [插件总览](/guide/plugins)
+- [组件总览](/guide/components)
 - [配置管理](/guide/config)

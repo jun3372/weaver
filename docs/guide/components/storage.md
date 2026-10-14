@@ -2,16 +2,16 @@
 
 ## s3
 
-Weaver 的 S3 兼容对象存储客户端组件,基于 [minio-go/v7](https://github.com/minio/minio-go)。一个插件同时覆盖 MinIO、AWS S3 及其他一切 S3 兼容存储。声明 `weaver.Ref[s3.T]` 即可注入 `*minio.Client`,client 初始化与 bucket 探活由框架生命周期托管。
+Weaver 的 S3 兼容对象存储客户端组件,基于 [minio-go/v7](https://github.com/minio/minio-go)。一个组件同时覆盖 MinIO、AWS S3 及其他一切 S3 兼容存储。声明 `weaver.Ref[s3.T]` 即可注入 `*minio.Client`,client 初始化与 bucket 探活由框架生命周期托管。
 
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/s3
+go get github.com/jun3372/weaver/components/s3
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/s3" // 匿名导入完成组件注册
+import _ "github.com/jun3372/weaver/components/s3" // 匿名导入完成组件注册
 ```
 
 ### 配置
@@ -111,11 +111,11 @@ u, err := cli.PresignedGetObject(ctx, "mybucket", "photos/a.jpg", 15*time.Minute
 ```go
 cli, err := f.Ref().Client(ctx)
 if errors.Is(err, s3.ErrNotEnabled) {
-    // s3 插件未启用,走降级逻辑
+    // s3 组件未启用,走降级逻辑
 }
 ```
 
-常见错误哨兵:`ErrNotEnabled`/`ErrNotReady`(插件未启用/未就绪)、`ErrInvalidDSN`、`ErrInvalidScheme`、`ErrBucketNotFound`(DSN 声明的 bucket 不存在)。
+常见错误哨兵:`ErrNotEnabled`/`ErrNotReady`(组件未启用/未就绪)、`ErrInvalidDSN`、`ErrInvalidScheme`、`ErrBucketNotFound`(DSN 声明的 bucket 不存在)。
 
 ## elasticsearch
 
@@ -124,11 +124,11 @@ Weaver 的 Elasticsearch 客户端组件,基于官方 [go-elasticsearch/v9](http
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/elasticsearch
+go get github.com/jun3372/weaver/components/elasticsearch
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/elasticsearch" // 匿名导入完成组件注册
+import _ "github.com/jun3372/weaver/components/elasticsearch" // 匿名导入完成组件注册
 ```
 
 ### 配置
@@ -242,7 +242,7 @@ return bi.Close(ctx) // 等待全部刷盘并关闭
 
 - `Init`:未启用时打日志直接返回;解析 DSN 得到地址列表后创建 client,并 `Ping` 探活(响应为错误状态同样判失败)
 - `Shutdown`:官方 client 内部管理连接,无需显式关闭
-- 常见错误:`ErrNotEnabled`/`ErrNotReady`(插件未启用/未就绪);响应级别失败须通过 `res.IsError()` 判断并记得 `res.Body.Close()`
+- 常见错误:`ErrNotEnabled`/`ErrNotReady`(组件未启用/未就绪);响应级别失败须通过 `res.IsError()` 判断并记得 `res.Body.Close()`
 
 ## meilisearch
 
@@ -251,11 +251,11 @@ Weaver 的 Meilisearch 客户端组件,基于官方 [meilisearch-go](https://git
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/meilisearch
+go get github.com/jun3372/weaver/components/meilisearch
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/meilisearch" // 匿名导入完成组件注册
+import _ "github.com/jun3372/weaver/components/meilisearch" // 匿名导入完成组件注册
 ```
 
 ### 配置
@@ -330,9 +330,9 @@ res, err := cli.Index("articles").SearchWithContext(ctx, "golang", &meilisearch.
 
 - `Init`:未启用时打日志直接返回;校验 `Host` 后 `meilisearch.New` 创建 client,并 `HealthWithContext` 探活(状态非 `available` 同样判失败)
 - `Shutdown`:v0.36 的 `ServiceManager` 内部管理连接,未暴露关闭接口,无需显式关闭
-- 常见错误:`ErrNotEnabled`/`ErrNotReady`(插件未启用/未就绪)、`ErrInvalidHost`(Host 缺少合法 scheme)
+- 常见错误:`ErrNotEnabled`/`ErrNotReady`(组件未启用/未就绪)、`ErrInvalidHost`(Host 缺少合法 scheme)
 
 ## 相关阅读
 
-- [插件总览](/guide/plugins)
+- [组件总览](/guide/components)
 - [配置管理](/guide/config)

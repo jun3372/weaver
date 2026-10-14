@@ -7,11 +7,11 @@ Weaver's scheduled-task component, built on [go-co-op/gocron/v2](https://github.
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/gocron
+go get github.com/jun3372/weaver/components/gocron
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/gocron" // blank import completes component registration
+import _ "github.com/jun3372/weaver/components/gocron" // blank import completes component registration
 ```
 
 ### Configuration
@@ -24,7 +24,7 @@ gocron:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `Timezone` | empty | IANA timezone name (e.g. `Asia/Shanghai`); empty means the local timezone |
 
 Environment variable overrides: `WEAVER_GOCRON_ENABLED`, `WEAVER_GOCRON_TIMEZONE`.
@@ -123,9 +123,9 @@ for _, job := range sched.Jobs() {
 
 - `Init`: if not enabled, logs and returns immediately; parses `Timezone`, creates the scheduler with `NewScheduler` (plus `WithLocation`) and calls `Start` (`Start` is non-blocking; startup failures are not surfaced here)
 - `Shutdown`: `scheduler.Shutdown()` stops all jobs and releases resources; safe on uninitialized (disabled) components
-- Common errors: `ErrNotEnabled`/`ErrNotReady` (plugin not enabled / not ready), `ErrInvalidTimezone` (`Timezone` is not a valid IANA name); `Register` returns gocron's parse error for invalid job definitions (e.g. a bad crontab)
+- Common errors: `ErrNotEnabled`/`ErrNotReady` (component not enabled / not ready), `ErrInvalidTimezone` (`Timezone` is not a valid IANA name); `Register` returns gocron's parse error for invalid job definitions (e.g. a bad crontab)
 
 ## Further Reading
 
-- [Plugins Overview](/en/guide/plugins)
+- [Components Overview](/en/guide/components)
 - [Configuration](/en/guide/config)

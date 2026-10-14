@@ -7,9 +7,9 @@ Weaver 的 Consul 客户端组件,基于官方 [hashicorp/consul/api](https://gi
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/consul
+go get github.com/jun3372/weaver/components/consul
 # 主包匿名导入完成组件注册:
-# import _ "github.com/jun3372/weaver/plugins/consul"
+# import _ "github.com/jun3372/weaver/components/consul"
 ```
 
 ### 配置
@@ -94,9 +94,9 @@ Weaver 的 etcd 客户端组件,基于官方 [etcd client/v3](https://github.com
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/etcd
+go get github.com/jun3372/weaver/components/etcd
 # 主包匿名导入完成组件注册:
-# import _ "github.com/jun3372/weaver/plugins/etcd"
+# import _ "github.com/jun3372/weaver/components/etcd"
 ```
 
 ### 配置
@@ -173,7 +173,7 @@ go func() {
 ### 生命周期与错误
 
 - `Init`:未启用时打日志直接返回;解析 DSN 得到 endpoint 列表后 `clientv3.New`(DialTimeout 5s),并对首个 endpoint `Status` 探活,失败自动 `Close`;`Shutdown` 时 `Close` 关闭客户端
-- 常见错误:`ErrNotEnabled`/`ErrNotReady`(插件未启用/未就绪)、`ErrInvalidDSN`(scheme 不是 `etcd` 或无可用 endpoint)
+- 常见错误:`ErrNotEnabled`/`ErrNotReady`(组件未启用/未就绪)、`ErrInvalidDSN`(scheme 不是 `etcd` 或无可用 endpoint)
 
 ## nacos
 
@@ -182,9 +182,9 @@ Weaver 的 Nacos 客户端组件,基于官方 [nacos-sdk-go/v2](https://github.c
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/nacos
+go get github.com/jun3372/weaver/components/nacos
 # 主包匿名导入完成组件注册:
-# import _ "github.com/jun3372/weaver/plugins/nacos"
+# import _ "github.com/jun3372/weaver/components/nacos"
 ```
 
 ### 配置
@@ -259,7 +259,7 @@ _ = config.ListenConfig(vo.ListenParam{
 ### 生命周期与错误
 
 - `Init`:未启用时打日志直接返回;解析 DSN 构建共享的 `ClientConfig` 与 `ServerConfigs` 后依次创建两个客户端,后者创建失败时回滚前者;随后拉取服务列表探活(空列表也算成功);`Shutdown` 时依次 `CloseClient` 关闭两者
-- 常见错误:`ErrNotEnabled`/`ErrNotReady`(插件未启用/未就绪)、`ErrInvalidDSN`、`ErrInvalidScheme`
+- 常见错误:`ErrNotEnabled`/`ErrNotReady`(组件未启用/未就绪)、`ErrInvalidDSN`、`ErrInvalidScheme`
 
 ## zookeeper
 
@@ -268,10 +268,10 @@ Weaver 的 ZooKeeper 客户端组件,基于 [go-zookeeper/zk](https://github.com
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/zookeeper
+go get github.com/jun3372/weaver/components/zookeeper
 
 # 主包匿名导入完成组件注册:
-# import _ "github.com/jun3372/weaver/plugins/zookeeper"
+# import _ "github.com/jun3372/weaver/components/zookeeper"
 ```
 
 ### 配置
@@ -342,9 +342,9 @@ if exists {
 ### 生命周期与错误
 
 - `Init`:未启用时打日志直接返回;解析 DSN 得到 host 列表后 `zk.Connect`(session timeout 5s,内部自动重试建连),若未进入 `StateConnected` 状态则 `Close` 并返回 `ErrNotReady`;`Shutdown` 时 `Close` 关闭连接
-- 常见错误:`zk.ErrNodeExists`(节点已存在)、`zk.ErrNoNode`(节点不存在)、`ErrNotEnabled`/`ErrNotReady`(插件未启用/未就绪)、`ErrInvalidDSN`
+- 常见错误:`zk.ErrNodeExists`(节点已存在)、`zk.ErrNoNode`(节点不存在)、`ErrNotEnabled`/`ErrNotReady`(组件未启用/未就绪)、`ErrInvalidDSN`
 
 ## 相关阅读
 
-- [插件总览](/guide/plugins)
+- [组件总览](/guide/components)
 - [配置管理](/guide/config)

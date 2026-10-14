@@ -7,11 +7,11 @@ Weaver 的 Redis 客户端组件,基于 [go-redis/v9](https://github.com/redis/g
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/redis
+go get github.com/jun3372/weaver/components/redis
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/redis" // 匿名导入完成组件注册
+import _ "github.com/jun3372/weaver/components/redis" // 匿名导入完成组件注册
 ```
 
 ### 配置
@@ -113,7 +113,7 @@ cli.Publish(ctx, "events", "hello")
 ```go
 cli, err := s.Ref().Client(ctx)
 if errors.Is(err, redis.ErrNotEnabled) {
-    // redis 插件未启用,走降级逻辑
+    // redis 组件未启用,走降级逻辑
 }
 ```
 
@@ -124,11 +124,11 @@ Weaver 的 Memcached 客户端组件,基于 [gomemcache](https://github.com/brad
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/memcached
+go get github.com/jun3372/weaver/components/memcached
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/memcached"
+import _ "github.com/jun3372/weaver/components/memcached"
 ```
 
 ### 配置
@@ -201,9 +201,9 @@ items, err := cli.GetMulti([]string{"k1", "k2", "k3"})
 
 - `Init`:未启用时打日志直接返回;按 DSN 解析多节点地址后 `memcache.New` 并 `Ping` 探活
 - `Shutdown`:gomemcache 客户端内部管理连接,无需显式关闭
-- 常见错误:`memcache.ErrCacheMiss`(key 不存在)、`ErrNotEnabled`/`ErrNotReady`(插件未启用/未就绪)
+- 常见错误:`memcache.ErrCacheMiss`(key 不存在)、`ErrNotEnabled`/`ErrNotReady`(组件未启用/未就绪)
 
 ## 相关阅读
 
-- [插件总览](/guide/plugins)
+- [组件总览](/guide/components)
 - [配置管理](/guide/config)

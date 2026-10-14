@@ -2,16 +2,16 @@
 
 ## s3
 
-Weaver's S3-compatible object storage client component, built on [minio-go/v7](https://github.com/minio/minio-go). A single plugin covers MinIO, AWS S3 and every other S3-compatible store. Declare a `weaver.Ref[s3.T]` to inject a `*minio.Client`; client initialization and the bucket health check are managed by the framework lifecycle.
+Weaver's S3-compatible object storage client component, built on [minio-go/v7](https://github.com/minio/minio-go). A single component covers MinIO, AWS S3 and every other S3-compatible store. Declare a `weaver.Ref[s3.T]` to inject a `*minio.Client`; client initialization and the bucket health check are managed by the framework lifecycle.
 
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/s3
+go get github.com/jun3372/weaver/components/s3
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/s3" // blank import completes component registration
+import _ "github.com/jun3372/weaver/components/s3" // blank import completes component registration
 ```
 
 ### Configuration
@@ -24,7 +24,7 @@ s3:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `s3://minioadmin:minioadmin@localhost:9000?secure=false` | Format `s3://access:secret@host:port[/bucket]?secure=true\|false` |
 
 DSN details: `bucket` is optional; when set, the `Init` stage runs a `BucketExists` probe and reports `ErrBucketNotFound` if it does not exist. If `secure` is not specified it defaults to `false` (the local MinIO case; when connecting to AWS S3 remember to set `secure=true`).
@@ -111,11 +111,11 @@ u, err := cli.PresignedGetObject(ctx, "mybucket", "photos/a.jpg", 15*time.Minute
 ```go
 cli, err := f.Ref().Client(ctx)
 if errors.Is(err, s3.ErrNotEnabled) {
-    // s3 plugin not enabled; fall back to degraded logic
+    // s3 component not enabled; fall back to degraded logic
 }
 ```
 
-Common error sentinels: `ErrNotEnabled`/`ErrNotReady` (plugin not enabled / not ready), `ErrInvalidDSN`, `ErrInvalidScheme`, `ErrBucketNotFound` (the bucket declared in the DSN does not exist).
+Common error sentinels: `ErrNotEnabled`/`ErrNotReady` (component not enabled / not ready), `ErrInvalidDSN`, `ErrInvalidScheme`, `ErrBucketNotFound` (the bucket declared in the DSN does not exist).
 
 ## elasticsearch
 
@@ -124,11 +124,11 @@ Weaver's Elasticsearch client component, built on the official [go-elasticsearch
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/elasticsearch
+go get github.com/jun3372/weaver/components/elasticsearch
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/elasticsearch" // blank import completes component registration
+import _ "github.com/jun3372/weaver/components/elasticsearch" // blank import completes component registration
 ```
 
 ### Configuration
@@ -141,7 +141,7 @@ elasticsearch:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `DSN` | `http://localhost:9200` | Node addresses, comma-separated for multiple nodes; userinfo carries Basic Auth, e.g. `http://elastic:secret@host:9200` (the first address with userinfo is used) |
 
 Environment variable overrides: `WEAVER_ELASTICSEARCH_DSN`, `WEAVER_ELASTICSEARCH_ENABLED`.
@@ -242,7 +242,7 @@ return bi.Close(ctx) // wait for everything to flush and close
 
 - `Init`: if not enabled, logs and returns immediately; parses the DSN into an address list, creates the client and probes with `Ping` (an error-level response also counts as failure)
 - `Shutdown`: the official client manages connections internally; no explicit close needed
-- Common errors: `ErrNotEnabled`/`ErrNotReady` (plugin not enabled / not ready); response-level failures must be detected via `res.IsError()`, and remember to call `res.Body.Close()`
+- Common errors: `ErrNotEnabled`/`ErrNotReady` (component not enabled / not ready); response-level failures must be detected via `res.IsError()`, and remember to call `res.Body.Close()`
 
 ## meilisearch
 
@@ -251,11 +251,11 @@ Weaver's Meilisearch client component, built on the official [meilisearch-go](ht
 ### Installation
 
 ```bash
-go get github.com/jun3372/weaver/plugins/meilisearch
+go get github.com/jun3372/weaver/components/meilisearch
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/meilisearch" // blank import completes component registration
+import _ "github.com/jun3372/weaver/components/meilisearch" // blank import completes component registration
 ```
 
 ### Configuration
@@ -269,7 +269,7 @@ meilisearch:
 
 | Field | Default | Description |
 |---|---|---|
-| `Enabled` | `false` | Whether the plugin is enabled; when disabled, injection calls return `ErrNotEnabled` |
+| `Enabled` | `false` | Whether the component is enabled; when disabled, injection calls return `ErrNotEnabled` |
 | `Host` | `http://localhost:7700` | Node address, only `http://` / `https://` forms are accepted (Meilisearch is single-node, no multi-address) |
 | `APIKey` | empty | API Key (Bearer auth); leave empty for anonymous access |
 
@@ -330,9 +330,9 @@ res, err := cli.Index("articles").SearchWithContext(ctx, "golang", &meilisearch.
 
 - `Init`: if not enabled, logs and returns immediately; validates `Host`, creates the client with `meilisearch.New` and probes with `HealthWithContext` (a status other than `available` also counts as failure)
 - `Shutdown`: the v0.36 `ServiceManager` manages connections internally and exposes no close method; no explicit close needed
-- Common errors: `ErrNotEnabled`/`ErrNotReady` (plugin not enabled / not ready), `ErrInvalidHost` (Host missing a valid scheme)
+- Common errors: `ErrNotEnabled`/`ErrNotReady` (component not enabled / not ready), `ErrInvalidHost` (Host missing a valid scheme)
 
 ## Further Reading
 
-- [Plugins Overview](/en/guide/plugins)
+- [Components Overview](/en/guide/components)
 - [Configuration](/en/guide/config)

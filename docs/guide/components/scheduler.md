@@ -7,11 +7,11 @@ Weaver 的定时任务组件,基于 [go-co-op/gocron/v2](https://github.com/go-c
 ### 安装
 
 ```bash
-go get github.com/jun3372/weaver/plugins/gocron
+go get github.com/jun3372/weaver/components/gocron
 ```
 
 ```go
-import _ "github.com/jun3372/weaver/plugins/gocron" // 匿名导入完成组件注册
+import _ "github.com/jun3372/weaver/components/gocron" // 匿名导入完成组件注册
 ```
 
 ### 配置
@@ -127,5 +127,5 @@ for _, job := range sched.Jobs() {
 
 ## 相关阅读
 
-- [插件总览](/guide/plugins)
+- [组件总览](/guide/components)
 - [配置管理](/guide/config)
