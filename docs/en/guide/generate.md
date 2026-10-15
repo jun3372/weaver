@@ -14,7 +14,7 @@ Verify the installation:
 weaver version
 ```
 
-If you prefer not to install, `go run` works as a one-off alternative (every `weaver` command below can be replaced with `go run github.com/jun3372/weaver/cmd/weaver`).
+Always run the `weaver` CLI from a local installation for every command below. Do not use `go run github.com/jun3372/weaver/cmd/weaver` as a one-off: it can pollute the component module's go.sum and may run a generator version inconsistent with the published release.
 
 ## Scaffold a Project
 

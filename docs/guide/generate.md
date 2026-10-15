@@ -14,7 +14,7 @@ go install github.com/jun3372/weaver/cmd/weaver@latest
 weaver version
 ```
 
-不想安装时，也可以用 `go run` 临时执行（下文所有 `weaver` 命令都可以等价替换为 `go run github.com/jun3372/weaver/cmd/weaver`）。
+请始终使用本地安装的 `weaver` CLI 执行下文所有命令；不要用 `go run github.com/jun3372/weaver/cmd/weaver` 临时执行，以免污染组件 module 的 go.sum 或造成生成器版本不一致。
 
 ## 初始化项目
 

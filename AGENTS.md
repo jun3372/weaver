@@ -23,8 +23,9 @@ go build ./...
 go vet ./...
 go test ./...
 
-# 代码生成：组件接口变更后必须重新生成
-go run github.com/jun3372/weaver/cmd/weaver generate <包路径>
+# 代码生成：组件接口变更后必须重新生成（先安装本地 CLI，勿用 go run 临时执行）
+go install github.com/jun3372/weaver/cmd/weaver@latest
+weaver generate <包路径>
 
 # 项目脚手架与组件实现生成
 weaver init [dir]        # 初始化完整可运行项目
