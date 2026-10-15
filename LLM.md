@@ -44,11 +44,14 @@ func main() {
 }
 ```
 
-**必须运行代码生成**（组件接口变更后同样必须）：
+**必须运行代码生成**（组件接口变更后同样必须）。先把 CLI 安装到本地，再用本地 `weaver` 执行：
 
 ```bash
-go run github.com/jun3372/weaver/cmd/weaver generate <包路径>
+go install github.com/jun3372/weaver/cmd/weaver@latest
+weaver generate <包路径>
 ```
+
+**不要用 `go run github.com/jun3372/weaver/cmd/weaver` 临时执行**：组件接口变更后统一走"先安装、后生成"的流程，避免组件 module 的 go.sum 被生成器依赖污染，也保证生成器版本与已发布版本一致。
 
 生成结果写入该包的 `weaver_gen.go`（含 `//go:build !ignoreWeaverGen`）。没有它，运行时找不到组件注册信息，直接报错。**绝不手改 `weaver_gen.go`**。
 
@@ -203,10 +206,11 @@ type userRepo struct {
 ## 7. 常用命令
 
 ```bash
+go install github.com/jun3372/weaver/cmd/weaver@latest  # 先安装 CLI（generate/init/make 均用本地 weaver，勿用 go run）
 go build ./...          # 构建
 go vet ./...            # 静态检查
 go test ./...           # 测试（检测并发问题用 go test -race）
-go run github.com/jun3372/weaver/cmd/weaver generate <包路径>  # 组件接口变更后必须重新生成
+weaver generate <包路径>  # 代码生成：组件接口变更后必须重新生成
 weaver init [dir]       # 项目脚手架
 weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 weaver version          # 版本信息
