@@ -104,7 +104,7 @@ func benchPrimePeers(b *testing.B, n int, stale bool) *udpServer {
 	if stale {
 		lastSeen = lastSeen.Add(-2 * udpPeerTTL)
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		a := benchAddr("192.0.2.1:10000")
 		p := &udpPeer{addr: a, lastSeen: lastSeen}
 		s.peerTable[a.String()] = p
@@ -134,7 +134,7 @@ func BenchmarkUDPPeerPrune(b *testing.B) {
 		b.StopTimer()
 		s.peerTable = make(map[string]*udpPeer, 1000)
 		lastSeen := now.Add(-2 * udpPeerTTL)
-		for j := 0; j < 1000; j++ {
+		for range 1000 {
 			a := benchAddr("192.0.2.1:10000")
 			s.peerTable[a.String()] = &udpPeer{addr: a, lastSeen: lastSeen}
 		}

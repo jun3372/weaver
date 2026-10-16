@@ -28,8 +28,8 @@ type gen struct {
 func (g *gen) render(iface *types.Interface) ([]byte, error) {
 	var sb strings.Builder
 
-	for i := 0; i < iface.NumMethods(); i++ {
-		sb.WriteString(g.method(iface.Method(i)))
+	for method := range iface.Methods() {
+		sb.WriteString(g.method(method))
 	}
 
 	var imports strings.Builder
@@ -101,8 +101,8 @@ func (g *gen) params(sig *types.Signature) string {
 func (g *gen) results(sig *types.Signature) string {
 	tup := sig.Results()
 	var parts []string
-	for i := 0; i < tup.Len(); i++ {
-		parts = append(parts, g.typeString(tup.At(i).Type()))
+	for v := range tup.Variables() {
+		parts = append(parts, g.typeString(v.Type()))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -124,7 +124,7 @@ func (g *gen) typeString(t types.Type) string {
 
 func joinNames(n int, prefix string) string {
 	var parts []string
-	for i := 0; i < n; i++ {
+	for i := range n {
 		parts = append(parts, prefix+fmt.Sprint(i))
 	}
 	return strings.Join(parts, ", ")

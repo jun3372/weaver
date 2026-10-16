@@ -58,10 +58,10 @@ func TestNonZeroNotOverridden(t *testing.T) {
 
 func TestMissingTagSkipped(t *testing.T) {
 	type S struct {
-		Name    string `default:"hello"`
-		NoTag   string
-		Count   int `default:"10"`
-		NoTagI  int
+		Name   string `default:"hello"`
+		NoTag  string
+		Count  int `default:"10"`
+		NoTagI int
 	}
 	var s S
 	if err := Apply(&s, "root", nil); err != nil {

@@ -11,7 +11,7 @@ import (
 	"github.com/jun3372/weaver"
 )
 
-type T interface{}
+type T any
 
 type app struct {
 	weaver.Implements[weaver.Main]

@@ -13,7 +13,7 @@ type option struct {
 	Greeting string
 }
 
-type T interface{}
+type T any
 
 type app struct {
 	weaver.Implements[weaver.Main]
