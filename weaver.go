@@ -134,7 +134,7 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 }
 
 // RunComponent 启动全部组件后不执行额外主逻辑,阻塞等待退出信号
-// (SIGINT/SIGQUIT/SIGTERM)或组件调用 Exec(),随后优雅关闭并返回 nil。
+// (SIGINT/SIGQUIT/SIGTERM)或组件调用 Exit(),随后优雅关闭并返回 nil。
 // app 仅用于类型推断,传 (*T)(nil) 即可:
 //
 //	if err := weaver.RunComponent(ctx, (*app)(nil)); err != nil {
@@ -222,11 +222,12 @@ func (i *Implements[T]) setLogger(logger *slog.Logger) {
 	i.logger = logger
 }
 
-func (i *Implements[T]) setExec(fn context.CancelFunc) {
+func (i *Implements[T]) setExit(fn context.CancelFunc) {
 	i.exec = fn
 }
 
-func (i *Implements[T]) Exec() {
+// Exit 主动触发整个应用的优雅退出，等价于向进程发送退出信号。
+func (i *Implements[T]) Exit() {
 	i.exec()
 }
 

@@ -57,13 +57,13 @@ func (a *app) Shutdown(ctx context.Context) error {
 
 `weaver.Run` 内部使用 `signal.NotifyContext` 监听 `SIGINT`、`SIGQUIT`、`SIGTERM`，收到信号后取消上下文。
 
-组件可以通过 `Exec()` 主动触发优雅退出（等价于向进程发送退出信号）：
+组件可以通过 `Exit()` 主动触发优雅退出（等价于向进程发送退出信号）：
 
 ```go
 func (a *app) Init(ctx context.Context) error {
     go func() {
         // 某种满足退出条件时
-        a.Exec()
+        a.Exit()
     }()
     return nil
 }
@@ -81,4 +81,4 @@ weaver.Run / weaver.RunComponent
  └─ 退出时统一调用所有组件的 Shutdown
 ```
 
-`weaver.RunComponent(ctx, (*app)(nil))` 是 `weaver.Run` 的简写形式：启动流程完全一致，只是把主逻辑固定为"等待退出信号"（收到 `SIGINT`/`SIGQUIT`/`SIGTERM` 或组件调用 `Exec()` 后优雅关闭，返回 `nil`）。第二个参数仅用于类型推断。
+`weaver.RunComponent(ctx, (*app)(nil))` 是 `weaver.Run` 的简写形式：启动流程完全一致，只是把主逻辑固定为"等待退出信号"（收到 `SIGINT`/`SIGQUIT`/`SIGTERM` 或组件调用 `Exit()` 后优雅关闭，返回 `nil`）。第二个参数仅用于类型推断。

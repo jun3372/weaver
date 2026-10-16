@@ -108,7 +108,7 @@ func main() {
 }
 ```
 
-如果没有额外主逻辑、只需跑组件等退出信号，可用 `weaver.RunComponent` 一行简写（第二个参数仅用于类型推断，传 `(*app)(nil)` 即可；收到退出信号或组件调用 `Exec()` 后优雅关闭）：
+如果没有额外主逻辑、只需跑组件等退出信号，可用 `weaver.RunComponent` 一行简写（第二个参数仅用于类型推断，传 `(*app)(nil)` 即可；收到退出信号或组件调用 `Exit()` 后优雅关闭）：
 
 ```go
 func main() {
@@ -167,7 +167,7 @@ type app struct {
 - **`weaver.Implements[T]`**：声明组件实现的接口 `T`，自带 `Logger(ctx)`
 - **`weaver.Ref[T]`**：声明对其他组件的依赖，`Get()` 获取实例（字段形式声明后由框架自动注入）
 - **`weaver.WithConfig[T]`**：声明配置依赖，`Config()` 返回配置副本
-- **`weaver.Exec()`**：组件内主动触发应用退出
+- **`weaver.Exit()`**：组件内主动触发应用退出
 
 组件方法调用是进程内的普通接口调用，没有序列化与网络开销。
 

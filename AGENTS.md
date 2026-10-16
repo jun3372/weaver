@@ -40,7 +40,7 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 
 | 路径 | 职责 |
 |---|---|
-| `weaver.go` | 公共 API：`Main`、`Run[T,P]`、`Implements[T]`、`WithConfig[T]`、`Ref[T]`、`Exec` |
+| `weaver.go` | 公共 API：`Main`、`Run[T,P]`、`Implements[T]`、`WithConfig[T]`、`Ref[T]`、`Exit` |
 | `server.go` | `Listener[H]` 的内部服务端：HTTP / TCP / UDP 托管实现（非导出），配置注入、长驻 `serve` 并优雅关闭 |
 | `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger/服务组件配置、并发启动、优雅关闭（startWG barrier） |
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |

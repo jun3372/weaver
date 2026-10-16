@@ -25,7 +25,7 @@ func main() {
 		go func() {
 			time.Sleep(time.Second * 5)
 			t.Logger(ctx).Info("开始退出", "time", time.Now())
-			t.Exec()
+			t.Exit()
 		}()
 		<-ctx.Done()
 		return nil
