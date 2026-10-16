@@ -185,7 +185,7 @@ type InstanceOf[T any] interface {
 type Implements[T any] struct {
 	// Component logger.
 	logger *slog.Logger
-	exec   context.CancelFunc
+	exit   context.CancelFunc
 
 	// weaverInfo *weaver.WeaverInfo
 
@@ -223,12 +223,12 @@ func (i *Implements[T]) setLogger(logger *slog.Logger) {
 }
 
 func (i *Implements[T]) setExit(fn context.CancelFunc) {
-	i.exec = fn
+	i.exit = fn
 }
 
 // Exit 主动触发整个应用的优雅退出，等价于向进程发送退出信号。
 func (i *Implements[T]) Exit() {
-	i.exec()
+	i.exit()
 }
 
 func (Implements[T]) implements(T) {}
