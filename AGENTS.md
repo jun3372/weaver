@@ -120,5 +120,5 @@ http:
 2. **`internal/` 不可被外部导入**；外部使用方只能依赖根包与 `runtime/` 导出 API。
 3. **`widget.go` 使用 `unsafe.Pointer` 向未导出字段注入依赖**——重构时保持注入路径不变，勿"顺手清理"。
 4. `examples/` 下的三个示例必须保持可编译；`examples/hello/main_test.go` 依赖其中的 `run()` 函数。
-5. 已知的无害瑕疵，不必修复除非被要求：cobra `version` 命令 `Short` 描述仍写着 "Hugo"（复制粘贴残留）；`runtime/version` 基本未被使用。
+5. `runtime/version` 基本未被使用，属遗留代码，不必清理除非被要求。
 6. 依赖管理通过 `go.mod` 直接编辑 + `go mod tidy`，无额外工具。

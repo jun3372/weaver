@@ -1,6 +1,6 @@
 # 消息队列:kafka / rabbitmq / nats / nsq / mqtt
 
-Weaver 为五种常见消息中间件各提供一个客户端组件组件,遵循同一套约定:配置只暴露 `Enabled` 与连接 DSN(`mqtt` 额外有 `ClientID`),声明 `weaver.Ref[xxx.T]` 即可注入底层客户端,连接建立、探活与优雅关闭由框架生命周期托管。`Client(ctx)` 在未启用时返回 `ErrNotEnabled`,未就绪时返回 `ErrNotReady`,业务代码可用 `errors.Is` 统一降级。组件只托管客户端初始化,发布 / 订阅等业务语义按底层库原生 API 编写。
+Weaver 为五种常见消息中间件各提供一个客户端组件,遵循同一套约定:配置只暴露 `Enabled` 与连接 DSN(`mqtt` 额外有 `ClientID`),声明 `weaver.Ref[xxx.T]` 即可注入底层客户端,连接建立、探活与优雅关闭由框架生命周期托管。`Client(ctx)` 在未启用时返回 `ErrNotEnabled`,未就绪时返回 `ErrNotReady`,业务代码可用 `errors.Is` 统一降级。组件只托管客户端初始化,发布 / 订阅等业务语义按底层库原生 API 编写。
 
 ## kafka
 

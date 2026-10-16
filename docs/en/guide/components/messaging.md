@@ -1,6 +1,6 @@
 # Messaging: kafka / rabbitmq / nats / nsq / mqtt
 
-Weaver provides a client component component for each of five common message middlewares, all following the same conventions: configuration only exposes `Enabled` and the connection DSN (`mqtt` additionally has `ClientID`); declare `weaver.Ref[xxx.T]` to inject the underlying client, with connection establishment, health checks, and graceful shutdown managed by the framework lifecycle. `Client(ctx)` returns `ErrNotEnabled` when the component is not enabled and `ErrNotReady` when it is not ready, allowing business code to degrade uniformly via `errors.Is`. The components only manage client initialization; business semantics such as publishing / subscribing are written using the native APIs of the underlying libraries.
+Weaver provides a client component for each of five common message middlewares, all following the same conventions: configuration only exposes `Enabled` and the connection DSN (`mqtt` additionally has `ClientID`); declare `weaver.Ref[xxx.T]` to inject the underlying client, with connection establishment, health checks, and graceful shutdown managed by the framework lifecycle. `Client(ctx)` returns `ErrNotEnabled` when the component is not enabled and `ErrNotReady` when it is not ready, allowing business code to degrade uniformly via `errors.Is`. The components only manage client initialization; business semantics such as publishing / subscribing are written using the native APIs of the underlying libraries.
 
 ## kafka
 
