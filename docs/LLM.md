@@ -2,8 +2,8 @@
 
 面向 AI 编码智能体的 Weaver 框架使用规范。目标：让智能体在不读源码的情况下写出正确、可编译、符合惯例的 Weaver 应用。
 
-- 框架版本基准：**v0.1.9**（Go 1.27，可用泛型方法 / `reflect.TypeFor` 等新语言特性）
-- 组件库版本基准：`github.com/jun3372/weaver/components/*` v0.1.9
+- 框架版本基准：**v0.1.10**（Go 1.27，可用泛型方法 / `reflect.TypeFor` 等新语言特性）
+- 组件库版本基准：`github.com/jun3372/weaver/components/*` v0.1.10
 
 ---
 
@@ -201,7 +201,7 @@ type userRepo struct {
 - **Enabled 开关**：配置默认 `Enabled: false`，未启用时注入调用返回 `ErrNotEnabled`，未就绪返回 `ErrNotReady`，可直接 `errors.Is` 判断降级。不用某组件就不要导入它（不引入其客户端依赖）。
 - **配置段**：各组件读取同名配置段（`db:`、`redis:`、`kafka:`…），环境变量如 `WEAVER_DB_ENABLED`。
 - **生命周期**：`Init` 建连、`Shutdown` 关闭客户端，对未启用组件安全。
-- 组件 module 依赖 `github.com/jun3372/weaver` 的**已发布版本**（当前 v0.1.9）；修改组件时注意其 go.mod 不能指向未发布的版本。
+- 组件 module 依赖 `github.com/jun3372/weaver` 的**已发布版本**（当前 v0.1.10）；修改组件时注意其 go.mod 不能指向未发布的版本。
 
 ## 7. 常用命令
 

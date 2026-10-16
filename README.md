@@ -30,7 +30,7 @@ go get github.com/jun3372/weaver
 如需固定到某个发布版本：
 
 ```bash
-go get github.com/jun3372/weaver@v0.1.9
+go get github.com/jun3372/weaver@v0.1.10
 ```
 
 CLI 工具可以独立安装：
