@@ -493,7 +493,7 @@ go test ./examples/http/ -stress -run Stress
 │   ├── protocol/    # 私有协议解析示例(SOCKS5 方法协商 / 二进制帧)
 │   └── template/    # 手动注册代码生成的项目模板
 ├── internal/        # 内部实现(config / generate / reflection / files)
-├── runtime/         # codegen 注册表 / logger / version
+├── runtime/         # codegen 注册表 / logger
 ├── weaver.go        # 公共 API:Run / Implements / Ref / WithConfig
 ├── listener.go      # Listener 聚合服务组件:自动注入配置与 Handler
 ├── server.go        # Listener 内部服务端:HTTP / TCP / UDP 托管实现(非导出)
