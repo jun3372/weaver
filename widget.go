@@ -37,6 +37,7 @@ type widget struct {
 	regsByInterface map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl      map[reflect.Type]*codegen.Registration // registrations by component implementation type
 	components      map[string]any                         // components, by name
+	overrides       map[reflect.Type]any                   // 组件接口替换实例,weaver.Test 注入 fake 用
 	deps            map[string]map[string]bool             // 依赖边:deps[依赖者][被依赖者]=true,装配 Ref 时记录
 	watchConfig     []func()
 }
@@ -52,6 +53,7 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 		regsByInterface: map[reflect.Type]*codegen.Registration{},
 		regsByImpl:      map[reflect.Type]*codegen.Registration{},
 		components:      make(map[string]any),
+		overrides:       map[reflect.Type]any{},
 		deps:            map[string]map[string]bool{},
 		watchConfig:     []func(){},
 	}
@@ -101,6 +103,11 @@ func (w *widget) GetInterface(t reflect.Type) (any, error) {
 }
 
 func (w *widget) getInterface(t reflect.Type) (any, error) {
+	// 测试替换优先:命中则直接返回 fake,真实实现不实例化
+	if v, ok := w.overrides[t]; ok {
+		return v, nil
+	}
+
 	reg, ok := w.regsByInterface[t]
 	if !ok {
 		return nil, errors.Errorf("component %v not found; maybe you forgot to run weaver generate", t)

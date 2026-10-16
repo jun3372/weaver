@@ -421,6 +421,30 @@ Weaver 不绑定特定 tracing 后端，与 OpenTelemetry 生态按标准方式�
 i.Listener.Handler(otelhttp.NewHandler(mux, "server"))
 ```
 
+## 测试
+
+`weaver.Test` 在测试进程内装配并启动全部组件，无需为验证组件逻辑启动完整进程：
+
+```go
+func TestOrder(t *testing.T) {
+    h := weaver.Test(t,
+        weaver.Override[Store](&fakeStore{}),                 // 按组件接口替换为 fake
+        weaver.Conf("order", map[string]any{"timeout": "1s"}), // 注入组件配置
+    )
+
+    svc := h.Get[OrderService]()
+    if err := svc.Place(ctx, order); err != nil {
+        t.Fatal(err)
+    }
+} // 测试结束自动 cancel + shutdown
+```
+
+说明：
+
+- 组件从全局注册表（`weaver generate` 生成的 `init` 填充）解析，测试文件所在包需能触发生成的注册代码
+- 被 `Override` 的接口直接返回 fake 实例，真实实现不再实例化；fake 不注入 Ref 依赖，也不调用其 Init/Start/Shutdown
+- 组件启动同步失败会使测试立即失败；长驻阻塞型 Start 与 `Run` 行为一致，异步启动不阻塞
+
 ## 命令行工具
 
 ```bash
