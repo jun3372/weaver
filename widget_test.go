@@ -282,6 +282,55 @@ func TestValidateAcceptsConfig(t *testing.T) {
 	}
 }
 
+// pointerValidatedConf 用指针接收者实现 Validate,框架同样应识别并执行校验。
+type pointerValidatedConf struct {
+	Port int
+}
+
+func (c *pointerValidatedConf) Validate() error {
+	if c.Port <= 0 {
+		return errors.New("port 必须为正数")
+	}
+	return nil
+}
+
+type pointerValidatedComp struct {
+	Implements[validatedIntf]
+	WithConfig[pointerValidatedConf] `conf:"pvalidated"`
+}
+
+func (c *pointerValidatedComp) Ping() string { return "pong" }
+
+func TestValidateSupportsPointerReceiver(t *testing.T) {
+	confFile := filepath.Join(t.TempDir(), "weaver.yaml")
+	if err := os.WriteFile(confFile, []byte("pvalidated:\n  port: -1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := viper.New()
+	conf.SetConfigFile(confFile)
+	if err := conf.ReadInConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	w := newWidget(ctx, cancel, conf, []*codegen.Registration{{
+		Name:      "test/pvalidated",
+		Interface: reflection.Type[validatedIntf](),
+		Impl:      reflect.TypeFor[pointerValidatedComp](),
+	}}, "WEAVER")
+
+	c, err := w.getImpl(reflect.TypeFor[pointerValidatedComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	if got := c.(*pointerValidatedComp).Config().Port; got != 0 {
+		t.Fatalf("指针接收者的 Validate 也应生效并拒绝非法配置: got port %d, want 0", got)
+	}
+}
+
 func TestValidateRejectsInitialConfig(t *testing.T) {
 	_, c := newValidatedWidget(t, -1)
 	if got := c.Config().Port; got != 0 {

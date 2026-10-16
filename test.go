@@ -27,6 +27,8 @@ import (
 // 自动 start 并在测试结束时(cancel + shutdown)优雅关闭。
 //
 // 限制:被 Override 的 fake 不注入 Ref 依赖,也不调用其 Init/Start/Shutdown。
+// 带 Listener 字段的组件与生产行为一致:声明了 conf tag 即按配置(缺省为零值)
+// 自动 Serve,测试中需以 Conf 提供监听地址或接受随机端口。
 
 type testSettings struct {
 	overrides map[reflect.Type]any
