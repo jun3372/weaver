@@ -530,6 +530,9 @@ func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 				w.logger("weaver").Error("应用默认配置失败", "key", key, "err", err)
 				return
 			}
+			if !w.validateConfig(tmp.Elem().Interface(), key) {
+				return
+			}
 			fc.MethodByName("SetConfig").Call([]reflect.Value{tmp.Elem()})
 		}
 
@@ -539,6 +542,20 @@ func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 		}
 	}
 	return nil
+}
+
+// validateConfig 对实现了 Validate() error 的配置类型执行校验,
+// 失败时记录错误并返回 false,调用方保持旧配置不注入(热更新安全)。
+func (w *widget) validateConfig(cfg any, key string) bool {
+	v, ok := cfg.(interface{ Validate() error })
+	if !ok {
+		return true
+	}
+	if err := v.Validate(); err != nil {
+		w.logger("weaver").Error("配置校验失败,保留原有配置", "key", key, "err", err)
+		return false
+	}
+	return true
 }
 
 // initListener 装配单个 Listener 字段:init 服务端、注入组件 logger、
@@ -575,6 +592,9 @@ func (w *widget) initListener(l listenerAPI, impl any, f reflect.StructField, se
 		applyEnvVars(tmp.Interface(), w.conf, w.envPrefix, key)
 		if err := defaults.Apply(tmp.Interface(), key, w.conf.IsSet); err != nil {
 			w.logger("weaver").Error("应用默认配置失败", "key", key, "err", err)
+			return
+		}
+		if !w.validateConfig(tmp.Elem().Interface(), key) {
 			return
 		}
 		l.setConf(tmp.Elem().Interface())

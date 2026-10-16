@@ -215,6 +215,21 @@ func (s *service) Init(ctx context.Context) error {
 - 服务组件的 `addr` 在 `Serve` 时读取，修改监听地址仍需重启
 - 解析失败时保留旧配置并记录错误（fail-open）
 
+**配置校验**：配置类型实现 `Validate() error` 后，框架在每次注入（含热更新）前自动校验，校验失败则拒绝生效、保留旧值并记录错误：
+
+```go
+type options struct {
+    Port int
+}
+
+func (o options) Validate() error {
+    if o.Port <= 0 {
+        return errors.New("port 必须为正数")
+    }
+    return nil
+}
+```
+
 系统级配置（日志等）位于 `weaver` 键下：
 
 ```yaml

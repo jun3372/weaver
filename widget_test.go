@@ -3,6 +3,7 @@ package weaver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -216,6 +217,86 @@ func TestShutdownFollowsReverseDependencyOrder(t *testing.T) {
 	want := []string{"test/top", "test/mid", "test/leaf"}
 	if !slices.Equal(shutdownOrder, want) {
 		t.Fatalf("shutdown 顺序错误: got %v, want %v", shutdownOrder, want)
+	}
+}
+
+// --- 配置 Validate() 校验钩子 ---
+
+type validatedConf struct {
+	Port int
+}
+
+func (c validatedConf) Validate() error {
+	if c.Port <= 0 {
+		return errors.New("port 必须为正数")
+	}
+	return nil
+}
+
+type validatedIntf interface {
+	Ping() string
+}
+
+type validatedComp struct {
+	Implements[validatedIntf]
+	WithConfig[validatedConf] `conf:"validated"`
+}
+
+func (c *validatedComp) Ping() string { return "pong" }
+
+func newValidatedWidget(t *testing.T, port int) (*widget, *validatedComp) {
+	t.Helper()
+
+	confFile := filepath.Join(t.TempDir(), "weaver.yaml")
+	content := fmt.Sprintf("validated:\n  port: %d\n", port)
+	if err := os.WriteFile(confFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := viper.New()
+	conf.SetConfigFile(confFile)
+	if err := conf.ReadInConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	w := newWidget(ctx, cancel, conf, []*codegen.Registration{{
+		Name:      "test/validated",
+		Interface: reflection.Type[validatedIntf](),
+		Impl:      reflect.TypeFor[validatedComp](),
+	}}, "WEAVER")
+
+	c, err := w.getImpl(reflect.TypeFor[validatedComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	return w, c.(*validatedComp)
+}
+
+func TestValidateAcceptsConfig(t *testing.T) {
+	_, c := newValidatedWidget(t, 8080)
+	if got := c.Config().Port; got != 8080 {
+		t.Fatalf("合法配置应注入成功: got port %d, want 8080", got)
+	}
+}
+
+func TestValidateRejectsInitialConfig(t *testing.T) {
+	_, c := newValidatedWidget(t, -1)
+	if got := c.Config().Port; got != 0 {
+		t.Fatalf("非法配置应被拒绝并保留零值: got port %d, want 0", got)
+	}
+}
+
+func TestValidateRejectsHotReloadKeepsOldValue(t *testing.T) {
+	w, c := newValidatedWidget(t, 8080)
+
+	w.conf.Set("validated.port", -1)
+	w.reloadConfig()
+
+	if got := c.Config().Port; got != 8080 {
+		t.Fatalf("热更新非法值应被拒绝并保留旧值: got port %d, want 8080", got)
 	}
 }
 
