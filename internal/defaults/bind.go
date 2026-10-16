@@ -33,8 +33,7 @@ func BindFields(conf *viper.Viper, topLevelKey string, envPrefix string, typ ref
 }
 
 func bindStruct(conf *viper.Viper, topLevelKey, fieldPath string, envPrefix string, typ reflect.Type) {
-	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
+	for f := range typ.Fields() {
 		if !f.IsExported() {
 			continue
 		}
@@ -47,7 +46,7 @@ func bindStruct(conf *viper.Viper, topLevelKey, fieldPath string, envPrefix stri
 		childPath := fieldPath + "." + f.Name
 
 		// 嵌套 struct(非 time.Time):递归展开
-		if ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}) {
+		if ft.Kind() == reflect.Struct && ft != reflect.TypeFor[time.Time]() {
 			bindStruct(conf, topLevelKey, childPath, envPrefix, ft)
 			continue
 		}

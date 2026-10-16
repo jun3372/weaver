@@ -59,7 +59,7 @@ func applyStruct(s reflect.Value, keyPrefix string, isSet func(string) bool) err
 		viperKey := keyPrefix + "." + strings.ToLower(f.Name)
 
 		// 嵌套 struct(非指针):递归,不查 isSet(因为父段可能整体缺失)
-		if f.Type.Kind() == reflect.Struct && f.Type != reflect.TypeOf(time.Time{}) {
+		if f.Type.Kind() == reflect.Struct && f.Type != reflect.TypeFor[time.Time]() {
 			if err := applyStruct(fv, viperKey, isSet); err != nil {
 				return err
 			}
@@ -98,7 +98,7 @@ func applyStruct(s reflect.Value, keyPrefix string, isSet func(string) bool) err
 
 func setField(fv reflect.Value, ft reflect.Type, tag, name string) error {
 	// time.Duration 特殊处理(底层 int64,但按 string 解析)
-	if ft == reflect.TypeOf(time.Duration(0)) {
+	if ft == reflect.TypeFor[time.Duration]() {
 		d, err := time.ParseDuration(tag)
 		if err != nil {
 			return fmt.Errorf("field %s: 解析 duration %q: %w", name, tag, err)

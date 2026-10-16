@@ -41,10 +41,10 @@ type HTTPOption struct {
 	Prefix          string        `default:""` // HTTP 路由前缀,如 "/api/v1";空或 "/" 表示根路径
 	ShutdownTimeout time.Duration `default:"5s"`
 	// 超时防慢速攻击(slowloris):零值或负值关闭对应超时。
-	ReadTimeout       time.Duration `default:"30s"`  // 整个请求读取超时
-	ReadHeaderTimeout time.Duration `default:"10s"`  // 请求头读取超时
-	WriteTimeout      time.Duration `default:"30s"`  // 响应写出超时(长连接流式响应需显式关闭)
-	IdleTimeout       time.Duration `default:"120s"` // keep-alive 空闲超时
+	ReadTimeout       time.Duration `default:"30s"`     // 整个请求读取超时
+	ReadHeaderTimeout time.Duration `default:"10s"`     // 请求头读取超时
+	WriteTimeout      time.Duration `default:"30s"`     // 响应写出超时(长连接流式响应需显式关闭)
+	IdleTimeout       time.Duration `default:"120s"`    // keep-alive 空闲超时
 	MaxHeaderBytes    int           `default:"1048576"` // 请求头大小上限(1MB)
 }
 
@@ -66,7 +66,7 @@ type TCPOption struct {
 type UDPOption struct {
 	Addr            string
 	ShutdownTimeout time.Duration `default:"5s"`
-	MaxConcurrent   int // 单包处理最大并发数,超过后丢弃报文;<=0 不限
+	MaxConcurrent   int           // 单包处理最大并发数,超过后丢弃报文;<=0 不限
 }
 
 // TCPHandler 处理单条 TCP 连接,conn 由框架在关闭时负责回收。
@@ -367,9 +367,7 @@ func (s *tcpServer) serve(ctx context.Context, h TCPHandler) error {
 			safeEvent(log, "OnConnect", func() { onConnect.OnConnect(sess) })
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() {
 				if e := recover(); e != nil {
 					log.Error("tcp server handler panic",
@@ -388,7 +386,7 @@ func (s *tcpServer) serve(ctx context.Context, h TCPHandler) error {
 				}
 			}()
 			h.ServeTCP(ctx, tc)
-		}()
+		})
 	}
 }
 
@@ -431,10 +429,7 @@ func (c *tcpConn) Write(p []byte) (int, error) {
 
 // reapIdle 定期关闭活跃超时的连接;handler 将因读错误退出并自行注销会话。
 func (s *tcpServer) reapIdle(ctx context.Context, active time.Duration, log *slog.Logger) {
-	interval := active / 4
-	if interval < 100*time.Millisecond {
-		interval = 100 * time.Millisecond
-	}
+	interval := max(active/4, 100*time.Millisecond)
 	t := time.NewTicker(interval)
 	defer t.Stop()
 
@@ -578,10 +573,7 @@ func (s *udpServer) recordPeer(addr net.Addr) (added bool, pruned []net.Addr) {
 
 // reapIdlePeers 定期清理超过 udpPeerTTL 未活跃的静默对端并触发离线事件。
 func (s *udpServer) reapIdlePeers(ctx context.Context, onDisconnect UDPOnDisconnect, log *slog.Logger) {
-	interval := udpPeerTTL / 4
-	if interval < 100*time.Millisecond {
-		interval = 100 * time.Millisecond
-	}
+	interval := max(udpPeerTTL/4, 100*time.Millisecond)
 	t := time.NewTicker(interval)
 	defer t.Stop()
 
@@ -749,9 +741,7 @@ func (s *udpServer) serve(ctx context.Context, h UDPPacketHandler) error {
 		}
 
 		pkt := UDPPacket{Data: append([]byte(nil), buf[:n]...), Addr: addr}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if sem != nil {
 				defer func() { <-sem }()
 			}
@@ -770,7 +760,7 @@ func (s *udpServer) serve(ctx context.Context, h UDPPacketHandler) error {
 					log.Error("udp server write failed", "err", err)
 				}
 			}
-		}()
+		})
 	}
 }
 

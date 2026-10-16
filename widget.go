@@ -347,7 +347,7 @@ func setFieldFromString(fv reflect.Value, val string) {
 			fv.SetBool(b)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if fv.Type() == reflect.TypeOf(time.Duration(0)) {
+		if fv.Type() == reflect.TypeFor[time.Duration]() {
 			if d, err := time.ParseDuration(val); err == nil {
 				fv.SetInt(int64(d))
 			}
@@ -431,8 +431,7 @@ func scanAndBind(conf *viper.Viper, implType reflect.Type, envPrefix string) {
 		return
 	}
 
-	for i := 0; i < implType.NumField(); i++ {
-		f := implType.Field(i)
+	for f := range implType.Fields() {
 		fName := f.Type.Name()
 
 		// WithConfig[T] 字段
