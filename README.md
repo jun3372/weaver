@@ -452,6 +452,7 @@ weaver init [dir]              # 初始化完整可运行项目(cmd/main + inter
 weaver make <pkgdir> <Iface>   # 为组件接口生成实现结构体骨架
 weaver generate [packages]     # 生成组件注册代码 weaver_gen.go(接口变更后必须重新执行)
 weaver version                 # 版本信息(自动回退:ldflags → 模块版本 → VCS 戳记)
+weaver -version                # 同上,-version 与 --version 等价
 ```
 
 应用通用标志：`-conf <file>` 指定配置文件（或 `SERVICE_CONFIG` 环境变量）；两者均未指定时自动在工作目录及程序目录下查找 `weaver.*` / `config.*`（yaml/yml/toml/json），未找到则不加载配置。`-version`（或 `SERVICE_VERSION=true`）打印版本信息。
