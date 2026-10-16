@@ -40,7 +40,7 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 
 | 路径 | 职责 |
 |---|---|
-| `weaver.go` | 公共 API：`Main`、`Run[T,P]`、`Implements[T]`、`WithConfig[T]`、`Ref[T]`、`Exec` |
+| `weaver.go` | 公共 API：`Main`、`Run[T,P]`、`Implements[T]`、`WithConfig[T]`、`Ref[T]`、`Exit` |
 | `server.go` | `Listener[H]` 的内部服务端：HTTP / TCP / UDP 托管实现（非导出），配置注入、长驻 `serve` 并优雅关闭 |
 | `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger/服务组件配置、并发启动、优雅关闭（startWG barrier） |
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |
@@ -120,5 +120,5 @@ http:
 2. **`internal/` 不可被外部导入**；外部使用方只能依赖根包与 `runtime/` 导出 API。
 3. **`widget.go` 使用 `unsafe.Pointer` 向未导出字段注入依赖**——重构时保持注入路径不变，勿"顺手清理"。
 4. `examples/` 下的三个示例必须保持可编译；`examples/hello/main_test.go` 依赖其中的 `run()` 函数。
-5. 已知的无害瑕疵，不必修复除非被要求：cobra `version` 命令 `Short` 描述仍写着 "Hugo"（复制粘贴残留）；`runtime/version` 基本未被使用。
+5. `runtime/version` 基本未被使用，属遗留代码，不必清理除非被要求。
 6. 依赖管理通过 `go.mod` 直接编辑 + `go mod tidy`，无额外工具。

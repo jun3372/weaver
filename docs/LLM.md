@@ -90,9 +90,9 @@ func (u *userRepo) Find(ctx context.Context, id int64) (string, error) {
 |---|---|---|
 | `Init` | `Init(ctx context.Context) error` | 同步初始化（建连、校验配置），任一失败则启动中止 |
 | `Start` | `Start(ctx context.Context) error` | **异步**启动长驻逻辑；同步快速失败会中止进程，其余失败/panic 经 cancel 上报为 ERROR 日志 |
-| `Shutdown` | `Shutdown(ctx context.Context) error` | 收到 SIGINT/SIGQUIT/SIGTERM 或 `Exec()` 后调用，做优雅清理 |
+| `Shutdown` | `Shutdown(ctx context.Context) error` | 收到 SIGINT/SIGQUIT/SIGTERM 或 `Exit()` 后调用，做优雅清理 |
 
-`Start` 中必须监听 `ctx.Done()`，否则进程会带着失败的组件继续运行。组件可调用 `Exec()`（由 `Implements` 提供）主动触发优雅退出。
+`Start` 中必须监听 `ctx.Done()`，否则进程会带着失败的组件继续运行。组件可调用 `Exit()`（由 `Implements` 提供）主动触发优雅退出。
 
 ### 3.3 日志
 

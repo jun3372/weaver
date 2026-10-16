@@ -164,8 +164,8 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 
 	// 设置中途退出方法
 	if w.cancel != nil {
-		if i, ok := obj.(interface{ setExec(context.CancelFunc) }); ok {
-			i.setExec(w.cancel)
+		if i, ok := obj.(interface{ setExit(context.CancelFunc) }); ok {
+			i.setExit(w.cancel)
 		}
 	}
 

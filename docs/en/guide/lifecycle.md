@@ -57,13 +57,13 @@ func (a *app) Shutdown(ctx context.Context) error {
 
 `weaver.Run` listens for `SIGINT`, `SIGQUIT` and `SIGTERM` via `signal.NotifyContext` and cancels the context on receipt.
 
-Components can trigger graceful shutdown proactively via `Exec()` (equivalent to sending the process an exit signal):
+Components can trigger graceful shutdown proactively via `Exit()` (equivalent to sending the process an exit signal):
 
 ```go
 func (a *app) Init(ctx context.Context) error {
     go func() {
         // when some exit condition is met
-        a.Exec()
+        a.Exit()
     }()
     return nil
 }
@@ -81,4 +81,4 @@ weaver.Run / weaver.RunComponent
  └─ call Shutdown on all components on exit
 ```
 
-`weaver.RunComponent(ctx, (*app)(nil))` is a shorthand for `weaver.Run` with an identical startup flow — the main logic is fixed to "wait for the exit signal" (graceful shutdown on `SIGINT`/`SIGQUIT`/`SIGTERM` or a component calling `Exec()`, returning `nil`). The second parameter exists only for type inference.
+`weaver.RunComponent(ctx, (*app)(nil))` is a shorthand for `weaver.Run` with an identical startup flow — the main logic is fixed to "wait for the exit signal" (graceful shutdown on `SIGINT`/`SIGQUIT`/`SIGTERM` or a component calling `Exit()`, returning `nil`). The second parameter exists only for type inference.
