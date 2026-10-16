@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/IBM/sarama v1.61.1
-	github.com/jun3372/weaver v0.1.9
+	github.com/jun3372/weaver v0.1.10
 	github.com/pkg/errors v0.9.1
 )
 

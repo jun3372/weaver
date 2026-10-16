@@ -3,7 +3,7 @@ module github.com/jun3372/weaver/components/mongodb
 go 1.27
 
 require (
-	github.com/jun3372/weaver v0.1.9
+	github.com/jun3372/weaver v0.1.10
 	github.com/pkg/errors v0.9.1
 	go.mongodb.org/mongo-driver/v2 v2.9.2
 )
