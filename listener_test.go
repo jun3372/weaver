@@ -20,7 +20,7 @@ import (
 	"github.com/jun3372/weaver/runtime/codegen"
 )
 
-type listenerIntf interface{}
+type listenerIntf any
 
 // ---- 测试组件 ----
 

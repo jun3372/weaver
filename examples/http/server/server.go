@@ -14,7 +14,7 @@ type option struct {
 	Message string `default:"hello from default"` // 缺省走 default tag,配置文件/env 覆盖
 }
 
-type T interface{}
+type T any
 
 type impl struct {
 	weaver.Implements[T]

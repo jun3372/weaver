@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -50,7 +50,7 @@ func (s *latencyStats) report() (p50, p95, p99, max time.Duration, n int) {
 	if n == 0 {
 		return
 	}
-	sort.Slice(s.ns, func(i, j int) bool { return s.ns[i] < s.ns[j] })
+	slices.Sort(s.ns)
 	pick := func(q float64) time.Duration {
 		idx := int(math.Ceil(q*float64(n-1))) + 0
 		if idx >= n {
@@ -97,9 +97,7 @@ func runLoad(t *testing.T, name string, op func() error) stressResult {
 	gorHi := runtime.NumGoroutine()
 
 	for i := 0; i < *stressConc; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for {
 				select {
 				case <-stop:
@@ -114,7 +112,7 @@ func runLoad(t *testing.T, name string, op func() error) stressResult {
 				stats.add(time.Since(start))
 				ops.Add(1)
 			}
-		}()
+		})
 	}
 
 	time.Sleep(*stressDur)
@@ -150,9 +148,7 @@ func TestStressHTTP(t *testing.T) {
 		// 从 TestMain 保存的临时目录定位配置文件
 		conf := os.Getenv("SERVICE_CONFIG")
 		reloadStop = make(chan struct{})
-		reloadDone.Add(1)
-		go func() {
-			defer reloadDone.Done()
+		reloadDone.Go(func() {
 			ticker := time.NewTicker(500 * time.Millisecond)
 			defer ticker.Stop()
 			values := []string{"stress-A", "stress-B"}
@@ -169,7 +165,7 @@ func TestStressHTTP(t *testing.T) {
 					_ = os.WriteFile(conf, body(values[i%2]), 0o600)
 				}
 			}
-		}()
+		})
 	}
 
 	client := &http.Client{Transport: &http.Transport{
@@ -216,9 +212,7 @@ func TestStressTCP(t *testing.T) {
 
 	// 每个连接一个 worker:连接数 = 并发数,模拟长连接高频往返
 	for i := 0; i < *stressConc; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			conn, err := net.Dial("tcp", tcpAddr)
 			if err != nil {
 				errs.Add(1)
@@ -256,7 +250,7 @@ func TestStressTCP(t *testing.T) {
 				stats.add(time.Since(start))
 				ops.Add(1)
 			}
-		}()
+		})
 	}
 
 	time.Sleep(*stressDur)
@@ -318,9 +312,7 @@ func TestStressGoroutineStability(t *testing.T) {
 	// 短促高并发连接:大量连接快速建立并关闭,检查无 goroutine 泄漏
 	var wg sync.WaitGroup
 	for i := 0; i < *stressConc*4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			conn, err := net.Dial("tcp", tcpAddr)
 			if err != nil {
 				return
@@ -330,7 +322,7 @@ func TestStressGoroutineStability(t *testing.T) {
 			buf := make([]byte, 8)
 			_, _ = conn.Read(buf)
 			_ = conn.Close()
-		}()
+		})
 	}
 	wg.Wait()
 
