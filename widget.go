@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
 	"slices"
@@ -36,6 +37,7 @@ type widget struct {
 	regsByInterface map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl      map[reflect.Type]*codegen.Registration // registrations by component implementation type
 	components      map[string]any                         // components, by name
+	deps            map[string]map[string]bool             // 依赖边:deps[依赖者][被依赖者]=true,装配 Ref 时记录
 	watchConfig     []func()
 }
 
@@ -50,6 +52,7 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 		regsByInterface: map[reflect.Type]*codegen.Registration{},
 		regsByImpl:      map[reflect.Type]*codegen.Registration{},
 		components:      make(map[string]any),
+		deps:            map[string]map[string]bool{},
 		watchConfig:     []func(){},
 	}
 
@@ -182,8 +185,16 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 		return nil, err
 	}
 
-	// WithRef
-	if err := w.WithRef(obj, func(t reflect.Type) (any, error) { return w.getInterface(t) }); err != nil {
+	// WithRef:注入依赖并记录依赖边(供 shutdown 反向拓扑排序)
+	if err := w.WithRef(obj, func(t reflect.Type) (any, error) {
+		if dep, ok := w.regsByInterface[t]; ok && dep.Name != reg.Name {
+			if w.deps[reg.Name] == nil {
+				w.deps[reg.Name] = map[string]bool{}
+			}
+			w.deps[reg.Name][dep.Name] = true
+		}
+		return w.getInterface(t)
+	}); err != nil {
 		w.deregister(reg.Name)
 		return nil, err
 	}
@@ -737,8 +748,9 @@ func (w *widget) start(ctx context.Context) error {
 	return firstErr
 }
 
-// shutdown 等待所有 Start 返回后,快照组件并在锁外依次调用 Shutdown,
-// 避免用户实现死锁时永久占用 w.mu。
+// shutdown 等待所有 Start 返回后,按依赖反向拓扑序依次调用 Shutdown:
+// 被依赖的组件最后关闭(如 A 依赖 B,则先关 A 再关 B)。
+// 无依赖关系的组件按名序关闭保证确定性;循环依赖的组件按名序兜底并告警。
 func (w *widget) shutdown(ctx context.Context) {
 	w.startWG.Wait()
 
@@ -752,12 +764,58 @@ func (w *widget) shutdown(ctx context.Context) {
 	for c, impl := range w.components {
 		entries = append(entries, entry{name: c, impl: impl})
 	}
+	deps := make(map[string]map[string]bool, len(w.deps))
+	for a, bs := range w.deps {
+		deps[a] = maps.Clone(bs)
+	}
 	w.mu.Unlock()
 
+	// dependedBy[b]=依赖 b 的组件集合;b 的依赖者全部关闭后 b 才可关闭
+	remaining := make(map[string]any, len(entries))
+	dependedBy := map[string]map[string]bool{}
 	for _, e := range entries {
-		if i, ok := e.impl.(interface{ Shutdown(_ context.Context) error }); ok {
-			if err := i.Shutdown(ctx); err != nil {
-				w.log.Error("Component failed to shutdown", "component", e.name, "err", err)
+		remaining[e.name] = e.impl
+	}
+	for a, bs := range deps {
+		for b := range bs {
+			if _, ok := remaining[b]; !ok {
+				continue
+			}
+			if dependedBy[b] == nil {
+				dependedBy[b] = map[string]bool{}
+			}
+			dependedBy[b][a] = true
+		}
+	}
+
+	for len(remaining) > 0 {
+		var ready []string
+		for name := range remaining {
+			if len(dependedBy[name]) == 0 {
+				ready = append(ready, name)
+			}
+		}
+		if len(ready) == 0 {
+			names := make([]string, 0, len(remaining))
+			for name := range remaining {
+				names = append(names, name)
+			}
+			slices.Sort(names)
+			w.log.Warn("组件间存在循环依赖,关闭顺序无法完全按依赖排序,剩余组件按名序兜底关闭", "components", strings.Join(names, ", "))
+			ready = names
+		}
+		slices.Sort(ready)
+
+		for _, name := range ready {
+			impl := remaining[name]
+			delete(remaining, name)
+			for dep := range deps[name] {
+				delete(dependedBy[dep], name)
+			}
+			if i, ok := impl.(interface{ Shutdown(_ context.Context) error }); ok {
+				if err := i.Shutdown(ctx); err != nil {
+					w.log.Error("Component failed to shutdown", "component", name, "err", err)
+				}
 			}
 		}
 	}

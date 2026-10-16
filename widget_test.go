@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -128,6 +129,94 @@ func TestStartCancelsContextWhenStartReturnsError(t *testing.T) {
 
 	w.start(context.Background())
 	awaitCancel(t, ctx, "组件 Start 返回错误")
+}
+
+// --- shutdown 依赖拓扑排序 ---
+
+type topoLeafIntf interface {
+	Ping() string
+}
+
+type topoLeafComp struct {
+	Implements[topoLeafIntf]
+}
+
+func (c *topoLeafComp) Shutdown(context.Context) error { recordShutdown("test/leaf"); return nil }
+func (c *topoLeafComp) Ping() string                   { return "pong" }
+
+type topoMidIntf interface {
+	Ping() string
+}
+
+type topoMidComp struct {
+	Implements[topoMidIntf]
+	Ref[topoLeafIntf]
+}
+
+func (c *topoMidComp) Shutdown(context.Context) error { recordShutdown("test/mid"); return nil }
+func (c *topoMidComp) Ping() string                   { return "pong" }
+
+type topoTopIntf interface {
+	Ping() string
+}
+
+type topoTopComp struct {
+	Implements[topoTopIntf]
+	Ref[topoMidIntf]
+}
+
+func (c *topoTopComp) Shutdown(context.Context) error { recordShutdown("test/top"); return nil }
+func (c *topoTopComp) Ping() string                   { return "pong" }
+
+var (
+	shutdownMu    sync.Mutex
+	shutdownOrder []string
+)
+
+func recordShutdown(name string) {
+	shutdownMu.Lock()
+	defer shutdownMu.Unlock()
+	shutdownOrder = append(shutdownOrder, name)
+}
+
+// 被依赖的组件必须最后关闭：top 依赖 mid、mid 依赖 leaf，
+// 关闭顺序应为 top → mid → leaf。
+func TestShutdownFollowsReverseDependencyOrder(t *testing.T) {
+	shutdownMu.Lock()
+	shutdownOrder = nil
+	shutdownMu.Unlock()
+
+	_, w := newTestWidget(t,
+		&codegen.Registration{
+			Name:      "test/leaf",
+			Interface: reflection.Type[topoLeafIntf](),
+			Impl:      reflect.TypeFor[topoLeafComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/mid",
+			Interface: reflection.Type[topoMidIntf](),
+			Impl:      reflect.TypeFor[topoMidComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/top",
+			Interface: reflection.Type[topoTopIntf](),
+			Impl:      reflect.TypeFor[topoTopComp](),
+		},
+	)
+
+	// 拉起 top，经 Ref 注入递归实例化 mid 与 leaf 并记下依赖边
+	if _, err := w.getImpl(reflect.TypeFor[topoTopComp]()); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+
+	w.shutdown(context.Background())
+
+	shutdownMu.Lock()
+	defer shutdownMu.Unlock()
+	want := []string{"test/top", "test/mid", "test/leaf"}
+	if !slices.Equal(shutdownOrder, want) {
+		t.Fatalf("shutdown 顺序错误: got %v, want %v", shutdownOrder, want)
+	}
 }
 
 // start 必须异步启动组件：长驻阻塞型 Start（如监听服务）不能阻塞 start 返回，
