@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20260422231931-4d751bb6e37c
-	github.com/jun3372/weaver v0.1.9
+	github.com/jun3372/weaver v0.1.10
 	github.com/pkg/errors v0.9.1
 )
 

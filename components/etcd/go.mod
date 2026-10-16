@@ -3,7 +3,7 @@ module github.com/jun3372/weaver/components/etcd
 go 1.27
 
 require (
-	github.com/jun3372/weaver v0.1.9
+	github.com/jun3372/weaver v0.1.10
 	github.com/pkg/errors v0.9.1
 	go.etcd.io/etcd/client/v3 v3.7.2
 )

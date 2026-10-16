@@ -3,7 +3,7 @@ module github.com/jun3372/weaver/components/nats
 go 1.27
 
 require (
-	github.com/jun3372/weaver v0.1.9
+	github.com/jun3372/weaver v0.1.10
 	github.com/nats-io/nats.go v1.54.0
 	github.com/pkg/errors v0.9.1
 )

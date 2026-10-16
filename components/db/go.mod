@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/glebarez/sqlite v1.11.0
-	github.com/jun3372/weaver v0.1.9
+	github.com/jun3372/weaver v0.1.10
 	github.com/pkg/errors v0.9.1
 	gorm.io/driver/clickhouse v0.7.0
 	gorm.io/driver/mysql v1.6.0
