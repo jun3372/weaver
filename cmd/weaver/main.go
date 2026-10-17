@@ -8,6 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	pkgversion "github.com/jun3372/weaver/version"
+
 	"github.com/jun3372/weaver/cmd/weaver/generate"
 	"github.com/jun3372/weaver/cmd/weaver/initialization"
 	"github.com/jun3372/weaver/cmd/weaver/make"
@@ -21,6 +23,10 @@ var rootCmd = &cobra.Command{
 	// 避免 cobra 内部硬编码的英文 unknown command 分支。
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if v, _ := cmd.Flags().GetBool("version"); v {
+			// PrintVersion 内部 os.Exit(0),与 `weaver version` 行为一致
+			pkgversion.PrintVersion()
+		}
 		if len(args) == 0 {
 			return cmd.Help()
 		}
@@ -109,6 +115,7 @@ var completionLong = map[string]string{
 }
 
 func init() {
+	rootCmd.PersistentFlags().Bool("version", false, "打印版本信息并退出")
 	rootCmd.AddCommand(version.VersionCmd)
 	rootCmd.AddCommand(generate.GenerateCmd)
 	rootCmd.AddCommand(initialization.InitializationCmd)
@@ -149,6 +156,13 @@ func init() {
 // main 中 Execute 出错即以非零码退出;错误输出已由 cobra(经 ErrPrefix 与
 // SilenceErrors=false)写到 stderr。
 func main() {
+	// pflag 把 -version 解析为 shorthand 簇而非长参数,先归一化为 --version,
+	// 与宿主程序 stdlib flag 的 -version 写法保持一致
+	for i, arg := range os.Args[1:] {
+		if arg == "-version" {
+			os.Args[1+i] = "--version"
+		}
+	}
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

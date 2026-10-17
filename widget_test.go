@@ -3,9 +3,11 @@ package weaver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -128,6 +130,223 @@ func TestStartCancelsContextWhenStartReturnsError(t *testing.T) {
 
 	w.start(context.Background())
 	awaitCancel(t, ctx, "组件 Start 返回错误")
+}
+
+// --- shutdown 依赖拓扑排序 ---
+
+type topoLeafIntf interface {
+	Ping() string
+}
+
+type topoLeafComp struct {
+	Implements[topoLeafIntf]
+}
+
+func (c *topoLeafComp) Shutdown(context.Context) error { recordShutdown("test/leaf"); return nil }
+func (c *topoLeafComp) Ping() string                   { return "pong" }
+
+type topoMidIntf interface {
+	Ping() string
+}
+
+type topoMidComp struct {
+	Implements[topoMidIntf]
+	Ref[topoLeafIntf]
+}
+
+func (c *topoMidComp) Shutdown(context.Context) error { recordShutdown("test/mid"); return nil }
+func (c *topoMidComp) Ping() string                   { return "pong" }
+
+type topoTopIntf interface {
+	Ping() string
+}
+
+type topoTopComp struct {
+	Implements[topoTopIntf]
+	Ref[topoMidIntf]
+}
+
+func (c *topoTopComp) Shutdown(context.Context) error { recordShutdown("test/top"); return nil }
+func (c *topoTopComp) Ping() string                   { return "pong" }
+
+var (
+	shutdownMu    sync.Mutex
+	shutdownOrder []string
+)
+
+func recordShutdown(name string) {
+	shutdownMu.Lock()
+	defer shutdownMu.Unlock()
+	shutdownOrder = append(shutdownOrder, name)
+}
+
+// 被依赖的组件必须最后关闭：top 依赖 mid、mid 依赖 leaf，
+// 关闭顺序应为 top → mid → leaf。
+func TestShutdownFollowsReverseDependencyOrder(t *testing.T) {
+	shutdownMu.Lock()
+	shutdownOrder = nil
+	shutdownMu.Unlock()
+
+	_, w := newTestWidget(t,
+		&codegen.Registration{
+			Name:      "test/leaf",
+			Interface: reflection.Type[topoLeafIntf](),
+			Impl:      reflect.TypeFor[topoLeafComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/mid",
+			Interface: reflection.Type[topoMidIntf](),
+			Impl:      reflect.TypeFor[topoMidComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/top",
+			Interface: reflection.Type[topoTopIntf](),
+			Impl:      reflect.TypeFor[topoTopComp](),
+		},
+	)
+
+	// 拉起 top，经 Ref 注入递归实例化 mid 与 leaf 并记下依赖边
+	if _, err := w.getImpl(reflect.TypeFor[topoTopComp]()); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+
+	w.shutdown(context.Background())
+
+	shutdownMu.Lock()
+	defer shutdownMu.Unlock()
+	want := []string{"test/top", "test/mid", "test/leaf"}
+	if !slices.Equal(shutdownOrder, want) {
+		t.Fatalf("shutdown 顺序错误: got %v, want %v", shutdownOrder, want)
+	}
+}
+
+// --- 配置 Validate() 校验钩子 ---
+
+type validatedConf struct {
+	Port int
+}
+
+func (c validatedConf) Validate() error {
+	if c.Port <= 0 {
+		return errors.New("port 必须为正数")
+	}
+	return nil
+}
+
+type validatedIntf interface {
+	Ping() string
+}
+
+type validatedComp struct {
+	Implements[validatedIntf]
+	WithConfig[validatedConf] `conf:"validated"`
+}
+
+func (c *validatedComp) Ping() string { return "pong" }
+
+func newValidatedWidget(t *testing.T, port int) (*widget, *validatedComp) {
+	t.Helper()
+
+	confFile := filepath.Join(t.TempDir(), "weaver.yaml")
+	content := fmt.Sprintf("validated:\n  port: %d\n", port)
+	if err := os.WriteFile(confFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := viper.New()
+	conf.SetConfigFile(confFile)
+	if err := conf.ReadInConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	w := newWidget(ctx, cancel, conf, []*codegen.Registration{{
+		Name:      "test/validated",
+		Interface: reflection.Type[validatedIntf](),
+		Impl:      reflect.TypeFor[validatedComp](),
+	}}, "WEAVER")
+
+	c, err := w.getImpl(reflect.TypeFor[validatedComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	return w, c.(*validatedComp)
+}
+
+func TestValidateAcceptsConfig(t *testing.T) {
+	_, c := newValidatedWidget(t, 8080)
+	if got := c.Config().Port; got != 8080 {
+		t.Fatalf("合法配置应注入成功: got port %d, want 8080", got)
+	}
+}
+
+// pointerValidatedConf 用指针接收者实现 Validate,框架同样应识别并执行校验。
+type pointerValidatedConf struct {
+	Port int
+}
+
+func (c *pointerValidatedConf) Validate() error {
+	if c.Port <= 0 {
+		return errors.New("port 必须为正数")
+	}
+	return nil
+}
+
+type pointerValidatedComp struct {
+	Implements[validatedIntf]
+	WithConfig[pointerValidatedConf] `conf:"pvalidated"`
+}
+
+func (c *pointerValidatedComp) Ping() string { return "pong" }
+
+func TestValidateSupportsPointerReceiver(t *testing.T) {
+	confFile := filepath.Join(t.TempDir(), "weaver.yaml")
+	if err := os.WriteFile(confFile, []byte("pvalidated:\n  port: -1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := viper.New()
+	conf.SetConfigFile(confFile)
+	if err := conf.ReadInConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	w := newWidget(ctx, cancel, conf, []*codegen.Registration{{
+		Name:      "test/pvalidated",
+		Interface: reflection.Type[validatedIntf](),
+		Impl:      reflect.TypeFor[pointerValidatedComp](),
+	}}, "WEAVER")
+
+	c, err := w.getImpl(reflect.TypeFor[pointerValidatedComp]())
+	if err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	if got := c.(*pointerValidatedComp).Config().Port; got != 0 {
+		t.Fatalf("指针接收者的 Validate 也应生效并拒绝非法配置: got port %d, want 0", got)
+	}
+}
+
+func TestValidateRejectsInitialConfig(t *testing.T) {
+	_, c := newValidatedWidget(t, -1)
+	if got := c.Config().Port; got != 0 {
+		t.Fatalf("非法配置应被拒绝并保留零值: got port %d, want 0", got)
+	}
+}
+
+func TestValidateRejectsHotReloadKeepsOldValue(t *testing.T) {
+	w, c := newValidatedWidget(t, 8080)
+
+	w.conf.Set("validated.port", -1)
+	w.reloadConfig()
+
+	if got := c.Config().Port; got != 8080 {
+		t.Fatalf("热更新非法值应被拒绝并保留旧值: got port %d, want 8080", got)
+	}
 }
 
 // start 必须异步启动组件：长驻阻塞型 Start（如监听服务）不能阻塞 start 返回，

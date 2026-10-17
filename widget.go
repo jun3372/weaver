@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"reflect"
 	"slices"
@@ -36,6 +37,8 @@ type widget struct {
 	regsByInterface map[reflect.Type]*codegen.Registration // registrations by component interface type
 	regsByImpl      map[reflect.Type]*codegen.Registration // registrations by component implementation type
 	components      map[string]any                         // components, by name
+	overrides       map[reflect.Type]any                   // 组件接口替换实例,weaver.Test 注入 fake 用
+	deps            map[string]map[string]bool             // 依赖边:deps[依赖者][被依赖者]=true,装配 Ref 时记录
 	watchConfig     []func()
 }
 
@@ -50,6 +53,8 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 		regsByInterface: map[reflect.Type]*codegen.Registration{},
 		regsByImpl:      map[reflect.Type]*codegen.Registration{},
 		components:      make(map[string]any),
+		overrides:       map[reflect.Type]any{},
+		deps:            map[string]map[string]bool{},
 		watchConfig:     []func(){},
 	}
 
@@ -98,6 +103,11 @@ func (w *widget) GetInterface(t reflect.Type) (any, error) {
 }
 
 func (w *widget) getInterface(t reflect.Type) (any, error) {
+	// 测试替换优先:命中则直接返回 fake,真实实现不实例化
+	if v, ok := w.overrides[t]; ok {
+		return v, nil
+	}
+
 	reg, ok := w.regsByInterface[t]
 	if !ok {
 		return nil, errors.Errorf("component %v not found; maybe you forgot to run weaver generate", t)
@@ -182,8 +192,16 @@ func (w *widget) get(reg *codegen.Registration) (any, error) {
 		return nil, err
 	}
 
-	// WithRef
-	if err := w.WithRef(obj, func(t reflect.Type) (any, error) { return w.getInterface(t) }); err != nil {
+	// WithRef:注入依赖并记录依赖边(供 shutdown 反向拓扑排序)
+	if err := w.WithRef(obj, func(t reflect.Type) (any, error) {
+		if dep, ok := w.regsByInterface[t]; ok && dep.Name != reg.Name {
+			if w.deps[reg.Name] == nil {
+				w.deps[reg.Name] = map[string]bool{}
+			}
+			w.deps[reg.Name][dep.Name] = true
+		}
+		return w.getInterface(t)
+	}); err != nil {
 		w.deregister(reg.Name)
 		return nil, err
 	}
@@ -519,6 +537,9 @@ func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 				w.logger("weaver").Error("应用默认配置失败", "key", key, "err", err)
 				return
 			}
+			if !w.validateConfig(tmp.Elem(), key) {
+				return
+			}
 			fc.MethodByName("SetConfig").Call([]reflect.Value{tmp.Elem()})
 		}
 
@@ -528,6 +549,21 @@ func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 		}
 	}
 	return nil
+}
+
+// validateConfig 对实现了 Validate() error 的配置类型执行校验,
+// 经指针断言,值接收者与指针接收者的 Validate 均生效;
+// 失败时记录错误并返回 false,调用方保持旧配置不注入(热更新安全)。
+func (w *widget) validateConfig(v reflect.Value, key string) bool {
+	p, ok := v.Addr().Interface().(interface{ Validate() error })
+	if !ok {
+		return true
+	}
+	if err := p.Validate(); err != nil {
+		w.logger("weaver").Error("配置校验失败,保留原有配置", "key", key, "err", err)
+		return false
+	}
+	return true
 }
 
 // initListener 装配单个 Listener 字段:init 服务端、注入组件 logger、
@@ -564,6 +600,9 @@ func (w *widget) initListener(l listenerAPI, impl any, f reflect.StructField, se
 		applyEnvVars(tmp.Interface(), w.conf, w.envPrefix, key)
 		if err := defaults.Apply(tmp.Interface(), key, w.conf.IsSet); err != nil {
 			w.logger("weaver").Error("应用默认配置失败", "key", key, "err", err)
+			return
+		}
+		if !w.validateConfig(tmp.Elem(), key) {
 			return
 		}
 		l.setConf(tmp.Elem().Interface())
@@ -737,8 +776,9 @@ func (w *widget) start(ctx context.Context) error {
 	return firstErr
 }
 
-// shutdown 等待所有 Start 返回后,快照组件并在锁外依次调用 Shutdown,
-// 避免用户实现死锁时永久占用 w.mu。
+// shutdown 等待所有 Start 返回后,按依赖反向拓扑序依次调用 Shutdown:
+// 被依赖的组件最后关闭(如 A 依赖 B,则先关 A 再关 B)。
+// 无依赖关系的组件按名序关闭保证确定性;循环依赖的组件按名序兜底并告警。
 func (w *widget) shutdown(ctx context.Context) {
 	w.startWG.Wait()
 
@@ -752,12 +792,58 @@ func (w *widget) shutdown(ctx context.Context) {
 	for c, impl := range w.components {
 		entries = append(entries, entry{name: c, impl: impl})
 	}
+	deps := make(map[string]map[string]bool, len(w.deps))
+	for a, bs := range w.deps {
+		deps[a] = maps.Clone(bs)
+	}
 	w.mu.Unlock()
 
+	// dependedBy[b]=依赖 b 的组件集合;b 的依赖者全部关闭后 b 才可关闭
+	remaining := make(map[string]any, len(entries))
+	dependedBy := map[string]map[string]bool{}
 	for _, e := range entries {
-		if i, ok := e.impl.(interface{ Shutdown(_ context.Context) error }); ok {
-			if err := i.Shutdown(ctx); err != nil {
-				w.log.Error("Component failed to shutdown", "component", e.name, "err", err)
+		remaining[e.name] = e.impl
+	}
+	for a, bs := range deps {
+		for b := range bs {
+			if _, ok := remaining[b]; !ok {
+				continue
+			}
+			if dependedBy[b] == nil {
+				dependedBy[b] = map[string]bool{}
+			}
+			dependedBy[b][a] = true
+		}
+	}
+
+	for len(remaining) > 0 {
+		var ready []string
+		for name := range remaining {
+			if len(dependedBy[name]) == 0 {
+				ready = append(ready, name)
+			}
+		}
+		if len(ready) == 0 {
+			names := make([]string, 0, len(remaining))
+			for name := range remaining {
+				names = append(names, name)
+			}
+			slices.Sort(names)
+			w.log.Warn("组件间存在循环依赖,关闭顺序无法完全按依赖排序,剩余组件按名序兜底关闭", "components", strings.Join(names, ", "))
+			ready = names
+		}
+		slices.Sort(ready)
+
+		for _, name := range ready {
+			impl := remaining[name]
+			delete(remaining, name)
+			for dep := range deps[name] {
+				delete(dependedBy[dep], name)
+			}
+			if i, ok := impl.(interface{ Shutdown(_ context.Context) error }); ok {
+				if err := i.Shutdown(ctx); err != nil {
+					w.log.Error("Component failed to shutdown", "component", name, "err", err)
+				}
 			}
 		}
 	}

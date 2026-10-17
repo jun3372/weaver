@@ -215,6 +215,21 @@ func (s *service) Init(ctx context.Context) error {
 - 服务组件的 `addr` 在 `Serve` 时读取，修改监听地址仍需重启
 - 解析失败时保留旧配置并记录错误（fail-open）
 
+**配置校验**：配置类型实现 `Validate() error` 后，框架在每次注入（含热更新）前自动校验，校验失败则拒绝生效、保留旧值并记录错误：
+
+```go
+type options struct {
+    Port int
+}
+
+func (o options) Validate() error {
+    if o.Port <= 0 {
+        return errors.New("port 必须为正数")
+    }
+    return nil
+}
+```
+
 系统级配置（日志等）位于 `weaver` 键下：
 
 ```yaml
@@ -406,6 +421,30 @@ Weaver 不绑定特定 tracing 后端，与 OpenTelemetry 生态按标准方式�
 i.Listener.Handler(otelhttp.NewHandler(mux, "server"))
 ```
 
+## 测试
+
+`weaver.Test` 在测试进程内装配并启动全部组件，无需为验证组件逻辑启动完整进程：
+
+```go
+func TestOrder(t *testing.T) {
+    h := weaver.Test(t,
+        weaver.Override[Store](&fakeStore{}),                 // 按组件接口替换为 fake
+        weaver.Conf("order", map[string]any{"timeout": "1s"}), // 注入组件配置
+    )
+
+    svc := h.Get[OrderService]()
+    if err := svc.Place(ctx, order); err != nil {
+        t.Fatal(err)
+    }
+} // 测试结束自动 cancel + shutdown
+```
+
+说明：
+
+- 组件从全局注册表（`weaver generate` 生成的 `init` 填充）解析，测试文件所在包需能触发生成的注册代码
+- 被 `Override` 的接口直接返回 fake 实例，真实实现不再实例化；fake 不注入 Ref 依赖，也不调用其 Init/Start/Shutdown
+- 组件启动同步失败会使测试立即失败；长驻阻塞型 Start 与 `Run` 行为一致，异步启动不阻塞
+
 ## 命令行工具
 
 ```bash
@@ -413,6 +452,7 @@ weaver init [dir]              # 初始化完整可运行项目(cmd/main + inter
 weaver make <pkgdir> <Iface>   # 为组件接口生成实现结构体骨架
 weaver generate [packages]     # 生成组件注册代码 weaver_gen.go(接口变更后必须重新执行)
 weaver version                 # 版本信息(自动回退:ldflags → 模块版本 → VCS 戳记)
+weaver -version                # 同上,-version 与 --version 等价
 ```
 
 应用通用标志：`-conf <file>` 指定配置文件（或 `SERVICE_CONFIG` 环境变量）；两者均未指定时自动在工作目录及程序目录下查找 `weaver.*` / `config.*`（yaml/yml/toml/json），未找到则不加载配置。`-version`（或 `SERVICE_VERSION=true`）打印版本信息。
@@ -453,7 +493,7 @@ go test ./examples/http/ -stress -run Stress
 │   ├── protocol/    # 私有协议解析示例(SOCKS5 方法协商 / 二进制帧)
 │   └── template/    # 手动注册代码生成的项目模板
 ├── internal/        # 内部实现(config / generate / reflection / files)
-├── runtime/         # codegen 注册表 / logger / version
+├── runtime/         # codegen 注册表 / logger
 ├── weaver.go        # 公共 API:Run / Implements / Ref / WithConfig
 ├── listener.go      # Listener 聚合服务组件:自动注入配置与 Handler
 ├── server.go        # Listener 内部服务端:HTTP / TCP / UDP 托管实现(非导出)

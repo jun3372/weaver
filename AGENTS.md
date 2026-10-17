@@ -10,7 +10,9 @@
 - 基于接口的组件 + 依赖注入（`weaver.Ref[T]`）
 - 配置注入（`weaver.WithConfig[T]` + `conf:` tag），基于 Viper 支持热更新
 - 服务组件：`weaver.Listener[H]`（`H` 为 `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler` 或聚合接口 `weaver.Handler`）+ `conf:` tag，框架托管监听、连接管理与优雅关闭并自动 Serve，用户实现 handler 或经 `Handler()`/`Mux()` 注入；同一组件同一协议只能声明一个 Listener
-- 生命周期钩子（`Init` / `Start` / `Shutdown`），Start 异步启动（失败经 cancel 上报）
+- 生命周期钩子（`Init` / `Start` / `Shutdown`），Start 异步启动（失败经 cancel 上报）；Shutdown 按依赖反向拓扑排序（被依赖者最后关闭）
+- 配置校验钩子：配置类型实现 `Validate() error` 后，注入与热更新前自动校验，失败保留旧值
+- 进程内测试辅助 `weaver.Test(t, Override[I](fake), Conf(key, cfg))`，`Get[I]()` 取组件，测试结束自动关闭
 - 基于 `log/slog` 的日志（`weaver.Implements[T]` 自带 `Logger(ctx)`，自动注入 trace/span ID）
 - OpenTelemetry trace 上下文透传
 - `weaver generate` 代码生成 CLI（cobra 实现）
@@ -42,9 +44,10 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 |---|---|
 | `weaver.go` | 公共 API：`Main`、`Run[T,P]`、`Implements[T]`、`WithConfig[T]`、`Ref[T]`、`Exit` |
 | `server.go` | `Listener[H]` 的内部服务端：HTTP / TCP / UDP 托管实现（非导出），配置注入、长驻 `serve` 并优雅关闭 |
-| `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger/服务组件配置、并发启动、优雅关闭（startWG barrier） |
+| `widget.go` | DI 容器（unexported `widget`）：反射实例化组件、注入 Ref/Config/Logger/服务组件配置、并发启动、优雅关闭（startWG barrier + 依赖拓扑排序） |
+| `test.go` | 进程内测试辅助 `weaver.Test` / `TestApp` / `Override` / `Conf` |
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |
-| `cmd/weaver/` | cobra CLI：`init`（项目脚手架）、`make`（组件实现生成）、`generate`（注册代码生成）、`version` |
+| `cmd/weaver/` | cobra CLI：`init`（项目脚手架）、`make`（组件实现生成）、`generate`（注册代码生成）、`version`；根命令 `-version` |
 | `internal/config` | 系统配置结构体，配置 tag 为 `["weaver", "config", "conf"]` |
 | `internal/defaults` | `default` tag 解析与环境变量绑定（`Apply` / `BindFields`） |
 | `internal/generate` | 代码生成引擎 |
@@ -52,7 +55,6 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 | `internal/files` | 原子文件写入（遗留代码） |
 | `runtime/codegen` | 组件注册表：`Register` / `Registered` / `Find`，由生成的 `init()` 填充 |
 | `runtime/logger` | slog 封装（`New(opts...)`），含 trace/span ID 常量 |
-| `runtime/version` | ServiceWeaver API 版本常量，基本为遗留代码 |
 | `examples/hello` | 最小示例，含 `main_test.go`，配置文件 `weaver.yaml` / `weaver.toml` |
 | `examples/demo` | wechat 组件示例，演示 `Config()` 与具名 `WithConfig` 字段两种注入方式 |
 | `examples/http` | 单进程 HTTP/TCP/UDP 三服务示例，演示服务组件与配置热更新（`etc/weaver.yaml`） |
@@ -120,5 +122,4 @@ http:
 2. **`internal/` 不可被外部导入**；外部使用方只能依赖根包与 `runtime/` 导出 API。
 3. **`widget.go` 使用 `unsafe.Pointer` 向未导出字段注入依赖**——重构时保持注入路径不变，勿"顺手清理"。
 4. `examples/` 下的三个示例必须保持可编译；`examples/hello/main_test.go` 依赖其中的 `run()` 函数。
-5. `runtime/version` 基本未被使用，属遗留代码，不必清理除非被要求。
-6. 依赖管理通过 `go.mod` 直接编辑 + `go mod tidy`，无额外工具。
+5. 依赖管理通过 `go.mod` 直接编辑 + `go mod tidy`，无额外工具。
