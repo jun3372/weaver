@@ -54,7 +54,15 @@ func main() {
 }
 ```
 
-The second parameter of `weaver.Run` is the main-logic function, receiving the assembled Main component instance. If your app has no extra main logic and only needs to run components until an exit signal, use the one-liner `weaver.RunComponent(ctx, (*app)(nil))` (the second parameter exists only for type inference).
+The second parameter of `weaver.Run` is the main-logic function, receiving the assembled Main component instance. If your app has no extra main logic and only needs to run components until an exit signal (or a component calls `Exit()`), use `weaver.RunComponent` instead:
+
+```go
+func main() {
+    if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
+        panic(err)
+    }
+}
+```
 
 ### 2. Create a config file (weaver.yaml)
 

@@ -51,6 +51,33 @@ curl localhost:8080                      # hello v2
 
 See [Listener: HTTP / TCP / UDP Server Hosting](/en/guide/listener).
 
+## ddd — Layered DDD Example
+
+A standard `domain / application / infrastructure / interfaces` layout built on weaver components. It covers two bounded contexts (User and Order), GORM + SQLite persistence, domain ports bridged by same-package repository components, and a unified `{code,data,message}` response envelope:
+
+- `internal/domain/`: entities, value objects and repository ports (pure Go)
+- `internal/application/`: UserService / OrderService use-case components
+- `internal/infrastructure/persistence/`: GORM models, domain mapping and repository components
+- `internal/interfaces/http/`: HTTP Listener, routes, request DTOs and error-code mapping
+- `etc/weaver.yaml`: HTTP and db (in-memory SQLite by default) configuration
+
+> This example is a **standalone Go module**: its `go.mod` uses replace directives pointing back to the local framework and db component. Build/test it inside `examples/ddd` (`go test ./...`).
+
+```bash
+cd examples/ddd
+go run . -conf etc/weaver.yaml
+
+curl -s -X POST localhost:8080/api/v1/users \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Zhang San","email":"zhangsan@example.com"}'
+curl -s -X POST localhost:8080/api/v1/users/1/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"items":[{"productName":"Keyboard","unitAmount":39900,"currency":"CNY","quantity":2}]}'
+curl -s -X POST localhost:8080/api/v1/orders/1/pay
+```
+
+See [examples/ddd/README.md](https://github.com/jun3372/weaver/blob/main/examples/ddd/README.md).
+
 ## echo — Listener Examples for All Three Protocols
 
 Four standalone runnable examples of `weaver.Listener[H]` — implement a handler on the component and it is served automatically, no `Start` needed:

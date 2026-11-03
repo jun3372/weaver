@@ -54,7 +54,15 @@ func main() {
 }
 ```
 
-`weaver.Run` 的第二个参数是主逻辑函数，收到装配完成的 Main 组件实例；如果应用没有额外主逻辑、只需跑组件等退出信号，可用一行简写 `weaver.RunComponent(ctx, (*app)(nil))`（第二个参数仅用于类型推断）。
+`weaver.Run` 的第二个参数是主逻辑函数，收到装配完成的 Main 组件实例。如果应用没有额外主逻辑、只需跑组件等退出信号（或组件调用 `Exit()`），可改用 `weaver.RunComponent`：
+
+```go
+func main() {
+    if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
+        panic(err)
+    }
+}
+```
 
 ### 2. 创建配置文件 (weaver.yaml)
 
