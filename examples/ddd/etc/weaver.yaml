@@ -1,0 +1,20 @@
+app:
+  Name: "ddd-example"
+
+http:
+  Addr: ":8080"                 # WEAVER_HTTP_ADDR,修改需重启
+  Prefix: ""                    # 空表示根路径;路由已包含 /api/v1
+  ShutdownTimeout: "5s"
+
+db:
+  Enabled: true                 # 默认 false,必须显式开启;WEAVER_DB_ENABLED
+  # 内存 SQLite:进程内零外部依赖。连接池释放后数据会丢失,适合演示与测试。
+  DSN: "sqlite://file:data.db?mode=memory&cache=shared"
+  # 落盘写法(需确保目录存在):
+  # DSN: "sqlite://file:etc/ddd.db?cache=shared&mode=rwc&_pragma=busy_timeout(5000)"
+  # 环境变量可覆盖:WEAVER_DB_DSN
+
+weaver:
+  Logger:
+    Level: "info"               # WEAVER_LOGGER_LEVEL
+    Type: "text"                # WEAVER_LOGGER_TYPE

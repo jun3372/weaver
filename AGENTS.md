@@ -58,6 +58,7 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 | `examples/hello` | 最小示例，含 `main_test.go`，配置文件 `weaver.yaml` / `weaver.toml` |
 | `examples/demo` | wechat 组件示例，演示 `Config()` 与具名 `WithConfig` 字段两种注入方式 |
 | `examples/http` | 单进程 HTTP/TCP/UDP 三服务示例，演示服务组件与配置热更新（`etc/weaver.yaml`） |
+| `examples/ddd` | 标准 DDD 四层示例（User/Order + GORM SQLite），演示领域端口、同包仓储组件与统一 HTTP 信封。**独立 module**（replace 指回本地），构建/测试须在 `examples/ddd` 内执行，或经本地 `go.work` 联调 |
 | `examples/template` | 在 `init()` 中手动注册代码生成结果（无 `weaver_gen.go`）的写法 |
 
 依赖方向：根包 → `runtime/codegen` + `runtime/logger` + `internal/*`；生成的 `weaver_gen.go` → `runtime/codegen.Register`。
@@ -121,5 +122,5 @@ http:
 1. **绝不手改 `weaver_gen.go`**——它是生成文件，组件接口变更后重新运行 `weaver generate`。
 2. **`internal/` 不可被外部导入**；外部使用方只能依赖根包与 `runtime/` 导出 API。
 3. **`widget.go` 使用 `unsafe.Pointer` 向未导出字段注入依赖**——重构时保持注入路径不变，勿"顺手清理"。
-4. `examples/` 下的三个示例必须保持可编译；`examples/hello/main_test.go` 依赖其中的 `run()` 函数。
+4. `examples/` 下的所有示例必须保持可编译；`examples/hello/main_test.go` 依赖其中的 `run()` 函数。
 5. 依赖管理通过 `go.mod` 直接编辑 + `go mod tidy`，无额外工具。

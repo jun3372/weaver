@@ -51,6 +51,33 @@ curl localhost:8080                      # hello v2
 
 详见 [Listener:HTTP / TCP / UDP 服务托管](/guide/listener)。
 
+## ddd — 标准 DDD 分层
+
+用 weaver 组件承载 `domain / application / infrastructure / interfaces` 四层，演示用户与订单两个板块、GORM + SQLite 仓储、领域端口同包桥接与统一响应信封 `{code,data,message}`：
+
+- `internal/domain/`：实体、值对象与仓储端口（纯 Go，不依赖框架）
+- `internal/application/`：UserService / OrderService 用例组件
+- `internal/infrastructure/persistence/`：GORM 模型、领域映射与仓储组件
+- `internal/interfaces/http/`：HTTP Listener、路由、请求 DTO 与错误码映射
+- `etc/weaver.yaml`：HTTP 与 db（默认内存 SQLite）配置
+
+> 该示例是**独立 Go module**：`go.mod` 通过 replace 指回本地框架与 db 组件，构建/测试请在 `examples/ddd` 目录内执行（`go test ./...`）。
+
+```bash
+cd examples/ddd
+go run . -conf etc/weaver.yaml
+
+curl -s -X POST localhost:8080/api/v1/users \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"张三","email":"zhangsan@example.com"}'
+curl -s -X POST localhost:8080/api/v1/users/1/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"items":[{"productName":"键盘","unitAmount":39900,"currency":"CNY","quantity":2}]}'
+curl -s -X POST localhost:8080/api/v1/orders/1/pay
+```
+
+详见 [examples/ddd/README.md](https://github.com/jun3372/weaver/blob/main/examples/ddd/README.md)。
+
 ## echo — Listener 三协议示例
 
 `weaver.Listener[H]` 的四个独立可运行示例，组件实现 handler 即自动 Serve，无需 `Start`：

@@ -258,3 +258,4 @@ Note: `mongo.Connect` uses lazy connection, so business errors often surface on 
 
 - [Components Overview](/en/guide/components)
 - [Configuration](/en/guide/config)
+- Full project example: [examples/ddd](https://github.com/jun3372/weaver/blob/main/examples/ddd/README.md) — layered DDD (User/Order + GORM SQLite) showing repository components bridging domain ports

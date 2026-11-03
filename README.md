@@ -489,6 +489,7 @@ go test ./examples/http/ -stress -run Stress
 │   ├── hello/       # 最小示例(组件定义与配置)
 │   ├── demo/        # 多组件与两种配置注入方式
 │   ├── http/        # 单进程 HTTP/TCP/UDP 三服务 + 热更新 + 基准/压测
+│   ├── ddd/         # 标准 DDD 分层示例(User/Order + GORM SQLite)
 │   ├── echo/        # Listener 示例:http / tcp / udp 各自独立 + all 三协议同跑
 │   ├── protocol/    # 私有协议解析示例(SOCKS5 方法协商 / 二进制帧)
 │   └── template/    # 手动注册代码生成的项目模板

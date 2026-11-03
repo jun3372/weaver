@@ -258,3 +258,4 @@ if errors.Is(err, mongodb.ErrNotEnabled) {
 
 - [组件总览](/guide/components)
 - [配置管理](/guide/config)
+- 完整项目示例：[examples/ddd](https://github.com/jun3372/weaver/blob/main/examples/ddd/README.md) — 标准 DDD 分层（User/Order + GORM SQLite），演示仓储组件与领域端口桥接

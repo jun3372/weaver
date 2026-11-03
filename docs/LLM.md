@@ -35,10 +35,7 @@ type app struct {
 }
 
 func main() {
-	if err := weaver.Run(context.Background(), func(ctx context.Context, app *app) error {
-		<-ctx.Done()
-		return nil
-	}); err != nil {
+	if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
 		panic(err)
 	}
 }
@@ -238,7 +235,7 @@ cmd/weaver/                                        CLI（init / make / generate 
 internal/{config,defaults,generate,reflection}     内部实现（外部不可导入）
 runtime/{codegen,logger}                           可导出的运行时 API
 components/                                        官方组件库（17 个独立 module）
-examples/{hello,http,demo,template,protocol}       示例（必须保持可编译）
+examples/{hello,http,demo,template,protocol,ddd}       示例（必须保持可编译；ddd 为独立 module，验证须在其目录内执行）
 docs/                                              VitePress 文档站源码
 ```
 
