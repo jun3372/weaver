@@ -1,9 +1,23 @@
 ---
 layout: home
 
+nav:
+  - text: 指南
+    link: /guide/getting-started
+  - text: 组件
+    link: /guide/components
+  - text: 智能体规范
+    link: /LLM
+  - text: 示例
+    link: /examples
+
+altLang:
+  text: English
+  link: /en/
+
 hero:
-  name: Weaver
-  text: 轻量级 Go 组件化应用框架
+  badge: v0.1.11 · MIT License · Go 1.27
+  title: 轻量级 Go 组件化应用框架
   tagline: 依赖注入 · 配置管理 · 生命周期 · 结构化日志 · 分布式追踪
   actions:
     - theme: brand
@@ -12,7 +26,47 @@ hero:
     - theme: alt
       text: GitHub
       link: https://github.com/jun3372/weaver
+      external: true
+  terminal:
+    title: quickstart
+    lines:
+      - { t: cmd, s: weaver init hello }
+      - { t: ok, s: '✔ 项目骨架已生成 ./hello' }
+      - { t: cmd, s: 'cd hello && weaver generate ./' }
+      - { t: ok, s: '✔ 组件注册代码已写入 weaver_gen.go' }
+      - { t: cmd, s: 'go run .' }
+      - { t: info, s: 'INFO App init' }
+      - { t: info, s: 'INFO resp msg="Hello, jun3372!"' }
+      - { t: out, s: '# Ctrl+C → 按依赖反向拓扑优雅退出' }
 
+stepsTitle: 三步上手
+steps:
+  - title: 声明组件
+    details: 用接口定义组件，以 weaver.Implements 声明实现；依赖通过 weaver.Ref 自动注入。
+    lang: go
+    code: |-
+      type Greeter interface {
+          Greet(ctx context.Context, name string) (string, error)
+      }
+
+      type greeter struct {
+          weaver.Implements[Greeter]
+      }
+  - title: 生成注册代码
+    details: weaver generate 扫描组件接口，把注册代码写入 weaver_gen.go，无需手写装配。
+    lang: sh
+    code: |-
+      $ weaver generate ./
+      ✔ weaver_gen.go 已生成
+  - title: 运行
+    details: weaver.Run 按依赖图并发启动组件，Init / Start / Shutdown 钩子托管全生命周期。
+    lang: sh
+    code: |-
+      $ go run .
+      INFO App init
+      INFO resp msg="Hello, jun3372!"
+
+featuresTitle: 核心能力
 features:
   - icon: >-
       <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z" /><path d="M16 8 2 22" /><path d="M17.488 15H9" /></svg>
@@ -38,4 +92,28 @@ features:
       <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></svg>
     title: OpenTelemetry 集成
     details: 开箱即用的分布式追踪，日志与链路自动关联。
+
+examples:
+  title: 示例项目
+  details: 从最小 Hello 到标准 DDD 分层，全部开箱即可运行。
+  items:
+    - name: examples/hello
+      tag: 入门
+      title: 最小示例
+      details: 组件声明、依赖注入、配置注入与结构化日志的最小可运行组合。
+      link: /examples
+    - name: examples/http
+      tag: 服务托管
+      title: HTTP / TCP / UDP 三服务
+      details: Listener 服务组件、路由前缀挂载与配置热更新实战。
+      link: /examples
+    - name: examples/ddd
+      tag: 架构
+      title: 标准 DDD 分层
+      details: 领域端口、同包仓储组件、GORM SQLite 与统一 HTTP 响应信封。
+      link: /examples
+
+footer:
+  message: Released under the MIT License.
+  copyright: Copyright © 2026 jun3372
 ---
