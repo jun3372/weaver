@@ -1,9 +1,23 @@
 ---
 layout: home
 
+nav:
+  - text: Guide
+    link: /en/guide/getting-started
+  - text: Components
+    link: /en/guide/components
+  - text: Agent Guide
+    link: /LLM
+  - text: Examples
+    link: /en/examples
+
+altLang:
+  text: 简体中文
+  link: /
+
 hero:
-  name: Weaver
-  text: Lightweight Component-Based Go Framework
+  badge: v0.1.11 · MIT License · Go 1.27
+  title: Lightweight Component-Based Go Framework
   tagline: Dependency Injection · Configuration · Lifecycle · Structured Logging · Distributed Tracing
   actions:
     - theme: brand
@@ -12,7 +26,47 @@ hero:
     - theme: alt
       text: GitHub
       link: https://github.com/jun3372/weaver
+      external: true
+  terminal:
+    title: quickstart
+    lines:
+      - { t: cmd, s: weaver init hello }
+      - { t: ok, s: '✔ project scaffold created ./hello' }
+      - { t: cmd, s: 'cd hello && weaver generate ./' }
+      - { t: ok, s: '✔ registration code written to weaver_gen.go' }
+      - { t: cmd, s: 'go run .' }
+      - { t: info, s: 'INFO App init' }
+      - { t: info, s: 'INFO resp msg="Hello, jun3372!"' }
+      - { t: out, s: '# Ctrl+C → graceful shutdown in reverse dependency order' }
 
+stepsTitle: Three Steps to Run
+steps:
+  - title: Declare a Component
+    details: Define components as interfaces and declare implementations with weaver.Implements; dependencies are injected via weaver.Ref.
+    lang: go
+    code: |-
+      type Greeter interface {
+          Greet(ctx context.Context, name string) (string, error)
+      }
+
+      type greeter struct {
+          weaver.Implements[Greeter]
+      }
+  - title: Generate Registration
+    details: weaver generate scans component interfaces and writes registration code to weaver_gen.go — no hand wiring.
+    lang: sh
+    code: |-
+      $ weaver generate ./
+      ✔ weaver_gen.go generated
+  - title: Run
+    details: weaver.Run starts components concurrently by the dependency graph; Init / Start / Shutdown hooks own the lifecycle.
+    lang: sh
+    code: |-
+      $ go run .
+      INFO App init
+      INFO resp msg="Hello, jun3372!"
+
+featuresTitle: Core Capabilities
 features:
   - icon: >-
       <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z" /><path d="M16 8 2 22" /><path d="M17.488 15H9" /></svg>
@@ -38,4 +92,28 @@ features:
       <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></svg>
     title: OpenTelemetry Ready
     details: First-class distributed tracing with logs automatically correlated to traces.
+
+examples:
+  title: Example Projects
+  details: From a minimal Hello to a standard DDD layering — all runnable out of the box.
+  items:
+    - name: examples/hello
+      tag: Starter
+      title: Minimal Example
+      details: The smallest runnable combination of components, DI, config injection, and structured logging.
+      link: /en/examples
+    - name: examples/http
+      tag: Server Hosting
+      title: HTTP / TCP / UDP Servers
+      details: Listener service components, route prefix mounting, and config hot reload in practice.
+      link: /en/examples
+    - name: examples/ddd
+      tag: Architecture
+      title: Standard DDD Layering
+      details: Domain ports, same-package repository components, GORM SQLite, and a unified HTTP response envelope.
+      link: /en/examples
+
+footer:
+  message: Released under the MIT License.
+  copyright: Copyright © 2026 jun3372
 ---
