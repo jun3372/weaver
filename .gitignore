@@ -11,8 +11,9 @@
 # Dependency directories (remove the comment below to include it)
 vendor/
 
-# Go workspace file
+# Go workspace file（go.work 由 CI/本地临时生成做联合编译,不入库）
 go.work
+go.work.sum
 
 # Go modules（go.mod/go.sum 是模块定义文件，必须入库；此规则原本错误地忽略了它们）
 !go.mod

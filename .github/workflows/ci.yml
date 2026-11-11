@@ -1,12 +1,10 @@
 name: CI
 
-# 构建 / 静态检查 / 测试门禁,外加「生成代码一致性」检查。
+# 构建 / 静态检查 / 测试门禁,外加「生成代码一致性」与「组件库联合编译」检查。
 # 覆盖范围说明:
 #   - `go build/vet/test ./...` 只覆盖根模块(github.com/jun3372/weaver)。
 #     `components/*`(17 个)与 `examples/ddd` 是独立 module,不在根模块的
-#     `./...` 内;其中组件库测试依赖真实中间件(redis/kafka/mongo 等),
-#     不适合在 PR 门禁里跑。组件库的联合构建矩阵由后续「组件库版本对齐」
-#     任务在本 workflow 追加 job 完成,故此处 step 命名保持独立、便于追加。
+#     `./...` 内,由 workspace-components job 临时生成 go.work 联合验证。
 #   - 生成一致性 job 覆盖仓库内所有已入库的 weaver_gen.go(含上述独立
 #     module),已实测可重复生成且零 diff。若后续某 module 因构建标签或
 #     网络原因无法生成,需在此处补充排除项并写明原因。
@@ -49,6 +47,78 @@ jobs:
 
       - name: Test
         run: go test ./... -count=1
+
+  # 组件库联合编译:临时生成 go.work(不入库,.gitignore 已忽略),让
+  # components/* 与 examples/ddd 用本地框架源码而非已发布版本编译验证。
+  # go.work 不入库的原因:入库会让所有 contributor 默认进入 workspace 模式
+  # (团队决策,见 THEB-6),CI 内按需生成即可获得同样的联合验证能力。
+  # genproto replace 的原因:workspace 会合并全部 member 的依赖图,nacos 依赖
+  # 链(nacos-sdk-go → grpc)引入旧版 google.golang.org/genproto,与 etcd 依赖
+  # 链引入的 genproto/googleapis/* 拆分模块对同一包路径产生 ambiguous import;
+  # 把旧版 replace 到新版统一后冲突消失。该 replace 只存在于临时 go.work,
+  # 不影响任何入库 module 的依赖选择。
+  workspace-components:
+    name: Components workspace build / test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.27
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Print Go version
+        run: go version
+
+      - name: Init temp go.work (not committed)
+        run: |
+          set -euo pipefail
+          # components/* 下有 README.md,不能直接 glob;按含 go.mod 过滤出 module 目录。
+          find ./components -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/go.mod' ';' -print | sort > /tmp/moddirs.txt
+          echo "workspace members ($(wc -l < /tmp/moddirs.txt) components + root + examples/ddd):"
+          cat /tmp/moddirs.txt
+          xargs go work init . < /tmp/moddirs.txt
+          go work use ./examples/ddd
+          go work edit -replace=google.golang.org/genproto=google.golang.org/genproto@v0.0.0-20261026165753-2ffab32bce7e
+          go work sync
+          cat go.work
+
+      # go.work 上的 genproto replace 会产生 workspace 层的额外校验和,
+      # 落在 go.work.sum;两者都必须留在 runner 上,防止污染后续 job 的工作区。
+      - name: Build & test each module
+        run: |
+          set -euo pipefail
+          go build ./...
+          go vet ./...
+          go test ./... -count=1
+          for d in ./components/* ./examples/ddd; do
+            echo "::group::build $d"
+            ( cd "$d" && go build ./... )
+            echo "::endgroup::"
+            echo "::group::test $d"
+            ( cd "$d" && go test ./... -count=1 )
+            echo "::endgroup::"
+          done
+          # 根模块单独关闭 workspace 再验一遍,确认 go.work 未改变根模块行为。
+          echo "::group::root module with GOWORK=off"
+          GOWORK=off go build ./... && GOWORK=off go test ./... -count=1
+          echo "::endgroup::"
+
+      - name: Ensure go files unchanged by workspace mode
+        run: |
+          set -euo pipefail
+          # workspace 模式下 go build/test 不应改动任何入库文件
+          # (go.work/go.work.sum 已被 .gitignore 忽略,porcelain 不会列出)。
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::workspace 模式构建改动了入库文件:"
+            git status --porcelain
+            exit 1
+          fi
+          echo "工作区干净,go.work 未入库。"
 
   generate-consistency:
     name: Generate consistency

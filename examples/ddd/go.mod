@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/glebarez/sqlite v1.11.0
-	github.com/jun3372/weaver v0.1.10
+	github.com/jun3372/weaver v0.1.11
 	github.com/jun3372/weaver/components/db v0.0.0
 	github.com/pkg/errors v0.9.1
 	gorm.io/gorm v1.31.2
