@@ -95,7 +95,16 @@ jobs:
           go build ./...
           go vet ./...
           go test ./... -count=1
-          for d in ./components/* ./examples/ddd; do
+          # 复用上一步的 module 目录列表(components/* 含 README.md,不能直接 glob)。
+          while IFS= read -r d; do
+            echo "::group::build $d"
+            ( cd "$d" && go build ./... )
+            echo "::endgroup::"
+            echo "::group::test $d"
+            ( cd "$d" && go test ./... -count=1 )
+            echo "::endgroup::"
+          done < /tmp/moddirs.txt
+          for d in ./examples/ddd; do
             echo "::group::build $d"
             ( cd "$d" && go build ./... )
             echo "::endgroup::"
