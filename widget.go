@@ -32,6 +32,10 @@ type widget struct {
 	log             *slog.Logger
 	mu              sync.Mutex
 	watchMu         sync.Mutex
+	reloadMu        sync.Mutex  // 保护 reloadTimer
+	reloadTimer     *time.Timer // 热更新去抖定时器,nil 表示无待触发重载
+	pendingReload   atomic.Bool // 有待处理的重载请求(去抖窗口内置位)
+	execMu          sync.Mutex  // 串行化重载执行,同一时刻最多一轮注入回调在跑
 	cancel          context.CancelFunc
 	startWG         sync.WaitGroup                         // 等待所有组件 Start 返回
 	regsByName      map[string]*codegen.Registration       // registrations by component name
@@ -68,16 +72,12 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 	}
 
 	if w.conf != nil {
-		// 注册环境变量绑定:系统配置(手工,剥掉 "weaver" 顶层避免重复)+ 组件配置(通用扫描)
-		bindSystemConfig(w.conf, envPrefix)
-		for _, reg := range regs {
-			scanAndBind(w.conf, reg.Impl, envPrefix)
-		}
-
+		// 系统配置注入:与组件配置共用唯一 env 解析路径 applyEnvVars,
+		// 不再注册任何 BindEnv/AutomaticEnv 绑定。
 		if err := conf.UnmarshalKey("weaver", &w.option); err != nil {
 			slog.Warn("failed to unmarshal system config", "err", err)
 		}
-		// 环境变量覆盖:viper.UnmarshalKey 不尊重 env,需手动应用
+		// 环境变量覆盖:viper.UnmarshalKey 不尊重 env,由 applyEnvVars 统一应用。
 		// 系统配置传空 topLevelKey,避免 env 名重复(WEAVER_LOGGER_LEVEL 而非 WEAVER_WEAVER_LOGGER_LEVEL)
 		applyEnvVars(w.option, conf, envPrefix, "")
 		// 系统配置 default tag 填充:仅对 viper 未设置的零值字段生效
@@ -92,7 +92,7 @@ func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper
 		conf.WatchConfig()
 		conf.OnConfigChange(func(e fsnotify.Event) {
 			w.log.Info("检测到配置变更", "file", e.Name)
-			w.reloadConfig()
+			w.scheduleReload()
 		})
 	}
 
@@ -329,22 +329,6 @@ func listeners(impl any) ([]listenerAPI, error) {
 	return out, nil
 }
 
-// bindSystemConfig 为系统配置手工注册环境变量绑定,剥掉 "weaver" 顶层避免
-// env 名重复(如 WEAVER_WEAVER_LOGGER_LEVEL)。
-func bindSystemConfig(conf *viper.Viper, prefix string) {
-	env := func(suffix string) string { return prefix + "_" + suffix }
-	conf.BindEnv("weaver.logger.level", env("LOGGER_LEVEL"))
-	conf.BindEnv("weaver.logger.type", env("LOGGER_TYPE"))
-	conf.BindEnv("weaver.logger.addsource", env("LOGGER_ADDSOURCE"))
-	conf.BindEnv("weaver.logger.component", env("LOGGER_COMPONENT"))
-	conf.BindEnv("weaver.logger.file.filename", env("LOGGER_FILE_FILENAME"))
-	conf.BindEnv("weaver.logger.file.maxsize", env("LOGGER_FILE_MAXSIZE"))
-	conf.BindEnv("weaver.logger.file.maxage", env("LOGGER_FILE_MAXAGE"))
-	conf.BindEnv("weaver.logger.file.maxbackups", env("LOGGER_FILE_MAXBACKUPS"))
-	conf.BindEnv("weaver.logger.file.localtime", env("LOGGER_FILE_LOCALTIME"))
-	conf.BindEnv("weaver.logger.file.compress", env("LOGGER_FILE_COMPRESS"))
-}
-
 // applyEnvVars 手动从环境变量读取值并覆盖 struct 字段。
 // 用于解决 viper.UnmarshalKey 不尊重环境变量的限制。
 // envPrefix 是环境变量前缀(如 "WEAVER"),topLevelKey 是配置顶层 key(如 "http")。
@@ -427,102 +411,6 @@ func setFieldFromString(fv reflect.Value, val string) {
 	case reflect.Float32, reflect.Float64:
 		if n, err := strconv.ParseFloat(val, 64); err == nil {
 			fv.SetFloat(n)
-		}
-	}
-}
-
-// listenerOptionType 从 Listener[H] 字段类型推断配置类型。
-// 复用 init 的协议探测逻辑:单协议直接映射,聚合类型按组件实现决定。
-func listenerOptionType(listenerType reflect.Type, implType reflect.Type) reflect.Type {
-	// 从类型字符串提取类型参数 H
-	// 例如:"weaver.Listener[http.Handler]" -> "http.Handler"
-	typeStr := listenerType.String()
-	start := strings.Index(typeStr, "[")
-	end := strings.LastIndex(typeStr, "]")
-	if start == -1 || end == -1 || start >= end {
-		return nil
-	}
-	hTypeStr := typeStr[start+1 : end]
-
-	// 根据类型参数字符串判断协议类型
-	var hType reflect.Type
-	switch {
-	case strings.HasSuffix(hTypeStr, "http.Handler") || hTypeStr == "http.Handler":
-		hType = httpHandlerType
-	case strings.HasSuffix(hTypeStr, ".TCPHandler") || hTypeStr == "weaver.TCPHandler":
-		hType = tcpHandlerType
-	case strings.HasSuffix(hTypeStr, ".UDPPacketHandler") || hTypeStr == "weaver.UDPPacketHandler":
-		hType = udpHandlerType
-	case strings.HasSuffix(hTypeStr, ".Handler") || hTypeStr == "weaver.Handler":
-		// 聚合类型:按组件实现决定
-		found := handlerProtocols(implType)
-		switch len(found) {
-		case 0:
-			return reflect.TypeFor[HTTPOption]()
-		case 1:
-			switch found[0] {
-			case httpHandlerType:
-				return reflect.TypeFor[HTTPOption]()
-			case tcpHandlerType:
-				return reflect.TypeFor[TCPOption]()
-			case udpHandlerType:
-				return reflect.TypeFor[UDPOption]()
-			}
-		}
-		return nil
-	default:
-		return nil
-	}
-
-	// 单协议:直接映射
-	switch hType {
-	case httpHandlerType:
-		return reflect.TypeFor[HTTPOption]()
-	case tcpHandlerType:
-		return reflect.TypeFor[TCPOption]()
-	case udpHandlerType:
-		return reflect.TypeFor[UDPOption]()
-	}
-	return nil
-}
-
-// scanAndBind 扫描组件实现类型的字段,为 WithConfig 与 Listener 字段的配置类型
-// 注册环境变量绑定。
-func scanAndBind(conf *viper.Viper, implType reflect.Type, envPrefix string) {
-	// implType 是 struct 类型(非指针)
-	if implType.Kind() == reflect.Pointer {
-		implType = implType.Elem()
-	}
-	if implType.Kind() != reflect.Struct {
-		return
-	}
-
-	for f := range implType.Fields() {
-		fName := f.Type.Name()
-
-		// WithConfig[T] 字段
-		if isConfigManagedType(fName) {
-			key := fieldConfTag(f)
-			if key == "" {
-				continue
-			}
-			cfgField, ok := f.Type.FieldByName("config")
-			if !ok {
-				continue
-			}
-			defaults.BindFields(conf, key, envPrefix, cfgField.Type)
-			continue
-		}
-
-		// Listener[H] 字段
-		if strings.HasPrefix(fName, "Listener[") {
-			key := fieldConfTag(f)
-			if key == "" {
-				continue
-			}
-			if optType := listenerOptionType(f.Type, implType); optType != nil {
-				defaults.BindFields(conf, key, envPrefix, optType)
-			}
 		}
 	}
 }
@@ -722,18 +610,71 @@ func (w *widget) setLogger(v any, logger *slog.Logger) error {
 	return nil
 }
 
-// reloadConfig 重新执行配置注入回调使变更生效。
+// reloadConfigDebounce 是热更新事件去抖窗口:窗口内多次文件事件合并为
+// 一次重载,避免编辑器多段写入/连续保存触发整批注入回调反复执行。
+const reloadConfigDebounce = 100 * time.Millisecond
+
+// scheduleReload 请求一次配置重载(固定窗口去抖):
+//   - 去抖:窗口自首个事件起算,窗口内的后续事件只置位 pendingReload、
+//     不重排定时器(固定窗口,规避 timer.Reset 与已触发 timer 的竞争),
+//     到期一次执行,读到的必是最新配置;
+//   - 异步:执行在定时器 goroutine 进行,fsnotify 回调立即返回,
+//     不阻塞后续文件事件的投递;
+//   - 序列化:重载执行经 execMu 串行,同一时刻最多一轮注入回调在跑,
+//     执行期间的新事件会排下一轮,不会并发注入。
+func (w *widget) scheduleReload() {
+	w.reloadMu.Lock()
+	defer w.reloadMu.Unlock()
+
+	w.pendingReload.Store(true)
+	if w.reloadTimer == nil {
+		w.reloadTimer = time.AfterFunc(reloadConfigDebounce, w.runReload)
+	}
+}
+
+// runReload 去抖窗口到期后执行一轮重载;并发触发下的多余 fire
+// (pendingReload 已被清)直接跳过,不做无谓执行。
+func (w *widget) runReload() {
+	w.reloadMu.Lock()
+	w.reloadTimer = nil
+	w.reloadMu.Unlock()
+
+	if !w.pendingReload.CompareAndSwap(true, false) {
+		return
+	}
+	w.reloadConfig()
+}
+
+// reloadConfig 同步执行一轮配置注入回调:
+//   - 经 execMu 串行,同一时刻最多一轮在跑(慢回调不并发重入);
+//   - 单回调 panic 被 recover 并记日志,不影响其它组件的配置注入,
+//     也不会打崩进程;
+//   - 不持 watchMu 执行回调,热更新进行中注册新组件不受阻塞。
 //
 // 刻意不做 shutdown/start 重启:长驻阻塞型 Start 在该路径下会永久阻塞
 // (startWG 永不释放),且重启无法重跑 Init;配置生效由注入回调完成。
+// 文件事件路径应使用 scheduleReload(去抖);本函数供测试与显式刷新使用。
 func (w *widget) reloadConfig() {
+	w.execMu.Lock()
+	defer w.execMu.Unlock()
+
 	w.watchMu.Lock()
 	fns := slices.Clone(w.watchConfig)
 	w.watchMu.Unlock()
 
 	for _, fn := range fns {
-		fn()
+		w.runWatchFn(fn)
 	}
+}
+
+// runWatchFn 隔离执行单个回调:panic 记 Error 日志后继续,不中断后续回调。
+func (w *widget) runWatchFn(fn func()) {
+	defer func() {
+		if e := recover(); e != nil {
+			w.log.Error("配置热更新回调 panic,已跳过该回调并继续执行其余回调", "panic", e)
+		}
+	}()
+	fn()
 }
 
 // start 并发启动所有组件的 Start 方法与已就绪 Listener 的自动 Serve。

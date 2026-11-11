@@ -49,7 +49,7 @@ weaver make <pkg> <接口名>  # 为组件接口生成实现结构体
 | `version/` | 版本信息，`-version` 标志或 `SERVICE_VERSION=true` 环境变量输出 |
 | `cmd/weaver/` | cobra CLI：`init`（项目脚手架）、`make`（组件实现生成）、`generate`（注册代码生成）、`version`；根命令 `-version` |
 | `internal/config` | 系统配置结构体，配置 tag 为 `["weaver", "config", "conf"]` |
-| `internal/defaults` | `default` tag 解析与环境变量绑定（`Apply` / `BindFields`） |
+| `internal/defaults` | `default` tag 解析与填充（`Apply`） |
 | `internal/generate` | 代码生成引擎 |
 | `internal/reflection` | `Type[T]`、`ComponentName[T]` 等反射工具 |
 | `internal/files` | 原子文件写入（遗留代码） |
@@ -92,6 +92,9 @@ type HTTPOption struct {
 - **组件配置**：`{prefix}_{topLevelKey}_{fieldPath}`，如默认前缀下 `http.readTimeout` → `WEAVER_HTTP_READTIMEOUT`
 - **系统配置**：剥掉 "weaver" 顶层，如 `weaver.logger.level` → `WEAVER_LOGGER_LEVEL`
 - **前缀本身**：通过 `SERVICE_ENV_PREFIX` 环境变量覆盖，默认 `WEAVER`。如 `SERVICE_ENV_PREFIX=MYAPP` 时，组件 env 变为 `MYAPP_HTTP_ADDR`
+
+唯一解析路径：配置注入链（viper.UnmarshalKey 读文件 → `applyEnvVars` 反射读 env 覆盖 → `defaults.Apply` 填 default tag）。
+框架不注册任何 viper env 绑定（无 `AutomaticEnv` / `BindEnv`），env 命名的映射关系由 `applyEnvVars` 单点维护。
 
 ### 优先级
 

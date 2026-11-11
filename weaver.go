@@ -94,9 +94,8 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 	}
 	if confFile != "" {
 		conf = viper.New()
-		conf.SetEnvPrefix(envPrefixName)
-		conf.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-		conf.AutomaticEnv()
+		// 环境变量不由 viper 解析:env 覆盖统一走 applyEnvVars(注入时反射读取
+		// os.Getenv),此处不启用 AutomaticEnv/BindEnv,避免多条解析通道并存。
 		conf.SetConfigFile(confFile)
 		if err := conf.ReadInConfig(); err != nil {
 			return errors.Errorf("Fatal error config file: %v", err)
