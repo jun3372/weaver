@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/jun3372/weaver"
@@ -48,6 +50,7 @@ func main() {
 			}
 		}
 	}); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/jun3372/weaver"
 	"github.com/jun3372/weaver/examples/http/server"
@@ -37,6 +39,7 @@ func main() {
 		<-ctx.Done()
 		return nil
 	}); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/jun3372/weaver"
 )
@@ -50,6 +51,7 @@ func main() {
 		<-ctx.Done()
 		return nil
 	}); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

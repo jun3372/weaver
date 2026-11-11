@@ -146,7 +146,8 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 ```

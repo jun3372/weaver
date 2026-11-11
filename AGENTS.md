@@ -10,7 +10,7 @@
 - 基于接口的组件 + 依赖注入（`weaver.Ref[T]`）
 - 配置注入（`weaver.WithConfig[T]` + `conf:` tag），基于 Viper 支持热更新
 - 服务组件：`weaver.Listener[H]`（`H` 为 `http.Handler` / `weaver.TCPHandler` / `weaver.UDPPacketHandler` 或聚合接口 `weaver.Handler`）+ `conf:` tag，框架托管监听、连接管理与优雅关闭并自动 Serve，用户实现 handler 或经 `Handler()`/`Mux()` 注入；同一组件同一协议只能声明一个 Listener
-- 生命周期钩子（`Init` / `Start` / `Shutdown`），Start 异步启动（失败经 cancel 上报）；Shutdown 按依赖反向拓扑排序（被依赖者最后关闭）
+- 生命周期钩子（`Init` / `Start` / `Shutdown`），Start 异步启动（失败会中止应用并作为 `Run` 的返回值上报）；Shutdown 按依赖反向拓扑排序（被依赖者最后关闭）
 - 配置校验钩子：配置类型实现 `Validate() error` 后，注入与热更新前自动校验，失败保留旧值
 - 进程内测试辅助 `weaver.Test(t, Override[I](fake), Conf(key, cfg))`，`Get[I]()` 取组件，测试结束自动关闭
 - 基于 `log/slog` 的日志（`weaver.Implements[T]` 自带 `Logger(ctx)`，自动注入 trace/span ID）

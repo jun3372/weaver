@@ -49,7 +49,8 @@ func main() {
         return nil
     })
     if err != nil {
-        panic(err)
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
     }
 }
 ```
@@ -59,7 +60,8 @@ func main() {
 ```go
 func main() {
     if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
-        panic(err)
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
     }
 }
 ```

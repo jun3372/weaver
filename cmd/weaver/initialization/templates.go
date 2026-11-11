@@ -16,6 +16,8 @@ var mainTmpl = template.Must(template.New("main").Parse(`package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"{{.Module}}/internal/app"
 
@@ -43,7 +45,10 @@ func (m *Main) Init(ctx context.Context) error {
 func main() {
 	// 第二个参数仅用于类型推断,传 (*Main)(nil) 即可。
 	if err := weaver.RunComponent(context.Background(), (*Main)(nil)); err != nil {
-		panic(err)
+		// 启动失败输出到 stderr 并以非零码退出;Ctrl-C 正常关闭时
+		// RunComponent 返回 nil,进程静默退出。
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 `))
