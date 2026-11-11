@@ -1,13 +1,17 @@
 package weaver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -462,4 +466,163 @@ func TestConfigReloadConcurrentWithoutDataRace(t *testing.T) {
 
 	close(stop)
 	wg.Wait()
+}
+
+// --- Listener/WithConfig 反射识别失败的显式诊断 ---
+
+// 命名类型包装(非别名):Type.Name() 不含 "Listener[" / "WithConfig[" 前缀,
+// 框架会静默跳过,装配期应输出 Warn 告警。
+type renamedListener Listener[Handler]
+type renamedWithConfig WithConfig[struct{ Word string }]
+
+type diagIntf interface{ Ping() string }
+type chatListenerIntf interface{ Ping() string } // 接口名含 "Listener" 字样,用于误报验证
+
+type diagComp struct {
+	Implements[diagIntf]
+	renamedL renamedListener   `conf:"renamed"`
+	renamedC renamedWithConfig `conf:"renamedcfg"`
+	netL     net.Listener      `conf:"netln"` // 外部同名类型
+	peer     Ref[diagPeerIntf] // Ref 字段,接口名不含敏感词,装配需能解析到已注册组件
+}
+
+// Ref 误报验证:接口名含 "Listener" 字样的组件原语字段不得触发告警。
+type diagRefComp struct {
+	Implements[diagIntf]
+	normal Ref[chatListenerIntf]
+}
+
+func (c *diagComp) Ping() string { return "pong" }
+
+type diagPeerIntf interface{ Ping() string }
+
+// diagPeerComp 是同进程正常组件,告警组件的装配不得影响它。
+type diagPeerComp struct {
+	Implements[diagPeerIntf]
+	WithConfig[struct{ Word string }] `conf:"diagpeer"`
+}
+
+func (c *diagPeerComp) Ping() string { return "pong" }
+
+// newDiagWidget 构造装配日志写入 buf 的 widget。
+func newDiagWidget(t *testing.T, buf *bytes.Buffer, regs ...*codegen.Registration) *widget {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	w := newWidget(ctx, cancel, viper.New(), regs, "WEAVER")
+	// 同包替换装配日志输出,避免依赖 slog 全局默认 logger(会被其它测试改写)
+	w.log = slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	return w
+}
+
+func TestWarnsOnUnrecognizedListenerAndConfigFields(t *testing.T) {
+	var buf bytes.Buffer
+	w := newDiagWidget(t, &buf,
+		&codegen.Registration{
+			Name:      "test/diag",
+			Interface: reflection.Type[diagIntf](),
+			Impl:      reflect.TypeFor[diagComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/diagpeer",
+			Interface: reflection.Type[diagPeerIntf](),
+			Impl:      reflect.TypeFor[diagPeerComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/chatlistener",
+			Interface: reflection.Type[chatListenerIntf](),
+			Impl:      reflect.TypeFor[diagPeerComp](),
+		},
+	)
+
+	// 告警组件装配:不得 panic,组件仍正常创建(只是服务/配置不生效)
+	c, err := w.getImpl(reflect.TypeFor[diagComp]())
+	if err != nil {
+		t.Fatalf("带异常字段的组件应仍能装配成功: %v", err)
+	}
+	if c.(*diagComp).Ping() != "pong" {
+		t.Fatal("告警组件应仍可正常调用")
+	}
+
+	// 同进程其它组件装配不受影响(含被 diagComp.Ref 引用的 diagPeerComp)
+	if _, err := w.getImpl(reflect.TypeFor[diagPeerComp]()); err != nil {
+		t.Fatalf("同进程其它组件装配不应受影响: %v", err)
+	}
+
+	out := buf.String()
+	if n := strings.Count(out, "未被框架识别为服务字段"); n != 1 {
+		t.Fatalf("Listener 类告警应恰好输出一次(同一组件同类合并), got %d 次:\n%s", n, out)
+	}
+	if n := strings.Count(out, "未被框架识别为配置托管字段"); n != 1 {
+		t.Fatalf("WithConfig 类告警应恰好输出一次, got %d 次:\n%s", n, out)
+	}
+	for _, want := range []string{"renamedL", "renamedC", "netL", "diagComp"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("告警应包含 %q, got:\n%s", want, out)
+		}
+	}
+
+	// 常见组件原语不得误报:normal 字段是 Ref[chatListenerIntf],接口名含 "Listener" 字样
+	var refBuf bytes.Buffer
+	w2 := newDiagWidget(t, &refBuf,
+		&codegen.Registration{
+			Name:      "test/diagref",
+			Interface: reflection.Type[diagIntf](),
+			Impl:      reflect.TypeFor[diagRefComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/chatlistener",
+			Interface: reflection.Type[chatListenerIntf](),
+			Impl:      reflect.TypeFor[diagPeerComp](),
+		},
+	)
+	if _, err := w2.getImpl(reflect.TypeFor[diagRefComp]()); err != nil {
+		t.Fatalf("Ref 字段组件装配不应失败: %v", err)
+	}
+	if refOut := refBuf.String(); strings.Contains(refOut, "未被框架识别") {
+		t.Fatalf("Ref[接口名含 Listener 字样] 字段不应触发告警, got:\n%s", refOut)
+	}
+}
+
+// 正常 weaver.Listener[H] / weaver.WithConfig[T] 场景不得产生识别类告警;
+// 纯类型别名(=)的反射名与原类型一致,识别与功能均不受影响,同样不应告警。
+// 注:Listener/WithConfig 字段须匿名内嵌 —— 命名类型别名作具名小写字段属未导出
+// 字段,SetConfig 反射调用会 panic,那是另一回事,不在本诊断覆盖范围内。
+type AliasListener = Listener[Handler]
+
+type diagOKComp struct {
+	Implements[diagIntf]
+	AliasListener               `conf:"okalias"` // 纯类型别名,应被正常识别
+	WithConfig[struct{ A int }] `conf:"okcfg"`
+}
+
+func (c *diagOKComp) Ping() string { return "pong" }
+
+func TestNoWarnOnRecognizedListenerAndConfigFields(t *testing.T) {
+	var buf bytes.Buffer
+	w := newDiagWidget(t, &buf,
+		&codegen.Registration{
+			Name:      "test/diagok",
+			Interface: reflection.Type[diagIntf](),
+			Impl:      reflect.TypeFor[diagOKComp](),
+		},
+		&codegen.Registration{
+			Name:      "test/diagpeer",
+			Interface: reflection.Type[diagPeerIntf](),
+			Impl:      reflect.TypeFor[diagPeerComp](),
+		},
+	)
+
+	if _, err := w.getImpl(reflect.TypeFor[diagOKComp]()); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	if _, err := w.getImpl(reflect.TypeFor[diagPeerComp]()); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+
+	if out := buf.String(); strings.Contains(out, "未被框架识别") {
+		t.Fatalf("正常 Listener/WithConfig 与纯类型别名字段不应产生识别类告警, got:\n%s", out)
+	}
 }
