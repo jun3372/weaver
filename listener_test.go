@@ -695,8 +695,19 @@ func TestListenerActiveTimeout(t *testing.T) {
 	close(stopPush)
 	<-pushDone
 
-	if len(comp.Sessions()) != 1 || comp.Sessions()[0].ID != receiverID {
-		t.Fatalf("纯接收客户端不应被误踢,当前会话数 %d", len(comp.Sessions()))
+	// 被踢连接的会话注销发生在 handler 的 defer 里:服务端 Close 让客户端
+	// Read 报错,但 handler 退出、delete(s.conns, id) 是随后的异步步骤。
+	// 这里必须有界等待注销完成,否则断言会撞上这个窗口(CI 上偶发失败)。
+	sessionsDeadline := time.Now().Add(3 * time.Second)
+	for {
+		ss := comp.Sessions()
+		if len(ss) == 1 && ss[0].ID == receiverID {
+			break
+		}
+		if time.Now().After(sessionsDeadline) {
+			t.Fatalf("纯接收客户端不应被误踢,当前会话数 %d", len(ss))
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	cancel()
