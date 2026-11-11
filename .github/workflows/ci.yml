@@ -1,0 +1,101 @@
+name: CI
+
+# 构建 / 静态检查 / 测试门禁,外加「生成代码一致性」检查。
+# 覆盖范围说明:
+#   - `go build/vet/test ./...` 只覆盖根模块(github.com/jun3372/weaver)。
+#     `components/*`(17 个)与 `examples/ddd` 是独立 module,不在根模块的
+#     `./...` 内;其中组件库测试依赖真实中间件(redis/kafka/mongo 等),
+#     不适合在 PR 门禁里跑。组件库的联合构建矩阵由后续「组件库版本对齐」
+#     任务在本 workflow 追加 job 完成,故此处 step 命名保持独立、便于追加。
+#   - 生成一致性 job 覆盖仓库内所有已入库的 weaver_gen.go(含上述独立
+#     module),已实测可重复生成且零 diff。若后续某 module 因构建标签或
+#     网络原因无法生成,需在此处补充排除项并写明原因。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-vet-test:
+    name: Build / Vet / Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.27
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Print Go version
+        run: go version
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -count=1
+
+  generate-consistency:
+    name: Generate consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go 1.27
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      # 用仓库源码构建 CLI,而不是安装已发布版本:这样才能保证门禁校验的是
+      # 本分支的生成器行为。
+      - name: Install weaver CLI from source
+        run: go install ./cmd/weaver
+
+      - name: Regenerate all committed weaver_gen.go
+        run: |
+          set -euo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          # 以仓库内已入库的生成文件为准确定覆盖范围,新增产物自动纳入。
+          git ls-files '*weaver_gen.go' | xargs -n1 dirname | sort -u > /tmp/gen-dirs.txt
+          echo "待校验目录($(wc -l < /tmp/gen-dirs.txt) 个):"
+          cat /tmp/gen-dirs.txt
+          while IFS= read -r d; do
+            echo "::group::weaver generate $d"
+            # 每个目录可能是独立 module,必须在各自目录内执行以使用其 go.mod。
+            ( cd "$d" && weaver generate . )
+            echo "::endgroup::"
+          done < /tmp/gen-dirs.txt
+
+      - name: Fail if generated files changed
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- '*weaver_gen.go'; then
+            echo "::error::weaver_gen.go 与源码不一致:请本地重新运行 weaver generate 并提交生成结果。"
+            exit 1
+          fi
+          # diff 只能发现已跟踪文件的改动/删除;再兜底检查有无新生成的
+          # 未跟踪文件(例如组件新增后尚未 git add 的 weaver_gen.go)。
+          if [ -n "$(git status --porcelain --untracked-files=all -- '*weaver_gen.go')" ]; then
+            echo "::error::检测到未提交的 weaver_gen.go 变更:"
+            git status --porcelain --untracked-files=all -- '*weaver_gen.go'
+            exit 1
+          fi
+          echo "生成代码一致。"
