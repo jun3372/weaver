@@ -3,7 +3,7 @@ module github.com/jun3372/weaver/components/nats
 go 1.27
 
 require (
-	github.com/jun3372/weaver v0.1.10
+	github.com/jun3372/weaver v0.1.11
 	github.com/nats-io/nats.go v1.55.0
 	github.com/pkg/errors v0.9.1
 )
@@ -16,6 +16,7 @@ require (
 	github.com/nats-io/nkeys v0.4.16 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
+	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
