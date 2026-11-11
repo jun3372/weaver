@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -40,6 +41,8 @@ type widget struct {
 	overrides       map[reflect.Type]any                   // 组件接口替换实例,weaver.Test 注入 fake 用
 	deps            map[string]map[string]bool             // 依赖边:deps[依赖者][被依赖者]=true,装配 Ref 时记录
 	watchConfig     []func()
+	startErrOnce    sync.Once
+	startErr        atomic.Pointer[error] // 启动阶段(Start/Listener serve)的首个错误,由 startErrOnce 保证只记一次
 }
 
 func newWidget(ctx context.Context, cancel context.CancelFunc, conf *viper.Viper, regs []*codegen.Registration, envPrefix string) *widget {
@@ -684,9 +687,14 @@ func (w *widget) reloadConfig() {
 }
 
 // start 并发启动所有组件的 Start 方法与已就绪 Listener 的自动 Serve。
-// Start/Listener 允许长驻阻塞(如监听服务),因此 start 不等待其返回,
-// 但会等待所有启动动作都已发起;同步快速失败时返回该错误,
-// 其余失败或 panic 通过 cancel 上报,由调用方及其 app 监听 ctx 响应。
+// Start/Listener 允许长驻阻塞(如监听服务),因此 start 只等待全部启动动作
+// 都已发起即返回,不等待任何长驻 Start——否则 Run 永远进不了主逻辑。
+//
+// 错误上报契约:任一 Start/serve 返回错误或 panic 时,错误写入 startErr
+// (首个错误胜出)并 cancel 应用 ctx;调用方在 cancel 之后、shutdown 完成
+// 之前经 startupError 读取,保证启动期错误必然反映在 Run 的返回值上,
+// 不受 goroutine 调度时序影响。start 自身的返回值仅覆盖同步即可见的
+// 装配类失败(Listeners 扫描、Start/Listener 冲突),供测试断言。
 func (w *widget) start(ctx context.Context) error {
 	w.mu.Lock()
 	impls := make([]any, 0, len(w.components))
@@ -695,19 +703,7 @@ func (w *widget) start(ctx context.Context) error {
 	}
 	w.mu.Unlock()
 
-	var (
-		launched sync.WaitGroup
-		errMu    sync.Mutex
-		firstErr error
-	)
-
-	setErr := func(err error) {
-		errMu.Lock()
-		defer errMu.Unlock()
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
+	var launched sync.WaitGroup
 
 	for _, impl := range impls {
 		_, hasStart := impl.(interface{ Start(_ context.Context) error })
@@ -716,7 +712,7 @@ func (w *widget) start(ctx context.Context) error {
 		ls, err := listeners(impl)
 		if err != nil {
 			w.log.Error("Component startup failed", "err", err)
-			setErr(err)
+			w.recordStartErr(err)
 			w.cancel()
 			continue
 		}
@@ -727,7 +723,7 @@ func (w *widget) start(ctx context.Context) error {
 			if hasStart {
 				err := errors.Errorf("组件 %T 同时定义了 Start 与 Listener,只能二选一", impl)
 				w.log.Error("Component startup failed", "err", err)
-				setErr(err)
+				w.recordStartErr(err)
 				w.cancel()
 				continue
 			}
@@ -756,14 +752,14 @@ func (w *widget) start(ctx context.Context) error {
 					if e := recover(); e != nil {
 						err := fmt.Errorf("component panic: %v", e)
 						w.log.Error("Component startup panicked", "err", err)
-						setErr(err)
+						w.recordStartErr(err)
 						w.cancel()
 					}
 				}()
 
 				if err := fn(ctx); err != nil {
 					w.log.Error("Component startup failed", "err", err)
-					setErr(err)
+					w.recordStartErr(err)
 					w.cancel()
 				}
 			}()
@@ -771,9 +767,26 @@ func (w *widget) start(ctx context.Context) error {
 	}
 
 	launched.Wait()
-	errMu.Lock()
-	defer errMu.Unlock()
-	return firstErr
+	return w.startupError()
+}
+
+// recordStartErr 记录启动阶段的首个错误;后续错误已被日志完整记录,
+// 返回值统一取首个,避免启动失败原因被淹没。
+func (w *widget) recordStartErr(err error) {
+	w.startErrOnce.Do(func() { w.startErr.Store(&err) })
+}
+
+// startupError 返回启动阶段记录的首个错误,无则返回 nil。
+//
+// 读侧与写侧的同步由原子指针提供:写侧在 Start/serve goroutine 内
+// 经 recordStartErr 写入并触发 cancel;读侧(Run / weaver.Test)在 ctx
+// 取消、startWG.Wait 之后的 shutdown 中调用,原子存取保证可见性,
+// 不存在数据竞争或半写入状态。
+func (w *widget) startupError() error {
+	if p := w.startErr.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // shutdown 等待所有 Start 返回后,按依赖反向拓扑序依次调用 Shutdown:

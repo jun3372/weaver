@@ -36,7 +36,7 @@ func (s *worker) Start(ctx context.Context) error {
 Start 阶段的行为：
 
 - 所有组件并发启动，全部 Start 已启动后 `weaver.Run` 才进入主逻辑（不阻塞长驻的 Start）
-- Start 同步快速失败会中止应用启动并返回错误；异步失败与 panic 会触发整体退出
+- Start 返回错误或 panic 都会中止应用:错误被记录、触发整体退出,并作为 `Run` 的返回值上报(首个错误胜出),不受 goroutine 调度时序影响
 - 长驻服务应阻塞在 `Start` 内（或使用 `weaver.Listener[H]` 自动托管，见[Listener](/guide/listener)）
 
 ## Shutdown
@@ -81,4 +81,4 @@ weaver.Run / weaver.RunComponent
  └─ 退出时统一调用所有组件的 Shutdown
 ```
 
-`weaver.RunComponent(ctx, (*app)(nil))` 是 `weaver.Run` 的简写形式：启动流程完全一致，只是把主逻辑固定为"等待退出信号"（收到 `SIGINT`/`SIGQUIT`/`SIGTERM` 或组件调用 `Exit()` 后优雅关闭，返回 `nil`）。第二个参数仅用于类型推断。
+`weaver.RunComponent(ctx, (*app)(nil))` 是 `weaver.Run` 的简写形式：启动流程完全一致，只是把主逻辑固定为"等待退出信号"（收到 `SIGINT`/`SIGQUIT`/`SIGTERM` 或组件调用 `Exit()` 后优雅关闭，返回 `nil`；若启动失败则返回该错误）。第二个参数仅用于类型推断。

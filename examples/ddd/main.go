@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/jun3372/weaver"
 	_ "github.com/jun3372/weaver/components/db"
@@ -26,9 +28,9 @@ func (a *app) Init(ctx context.Context) error {
 	return nil
 }
 
-
 func main() {
 	if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

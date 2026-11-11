@@ -36,7 +36,8 @@ type app struct {
 
 func main() {
 	if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 ```
@@ -86,10 +87,10 @@ func (u *userRepo) Find(ctx context.Context, id int64) (string, error) {
 | 钩子 | 签名 | 语义 |
 |---|---|---|
 | `Init` | `Init(ctx context.Context) error` | 同步初始化（建连、校验配置），任一失败则启动中止 |
-| `Start` | `Start(ctx context.Context) error` | **异步**启动长驻逻辑；同步快速失败会中止进程，其余失败/panic 经 cancel 上报为 ERROR 日志 |
+| `Start` | `Start(ctx context.Context) error` | **异步**启动长驻逻辑；返回错误或 panic 都会中止进程,并作为 `Run` 的返回值上报(首个错误胜出) |
 | `Shutdown` | `Shutdown(ctx context.Context) error` | 收到 SIGINT/SIGQUIT/SIGTERM 或 `Exit()` 后调用，做优雅清理 |
 
-`Start` 中必须监听 `ctx.Done()`，否则进程会带着失败的组件继续运行。组件可调用 `Exit()`（由 `Implements` 提供）主动触发优雅退出。
+`Start` 中应监听 `ctx.Done()` 以响应优雅关闭;Start/serve 的失败会可靠上报为 `Run` 返回值,不再依赖 app 主动监听 ctx 才能暴露。组件可调用 `Exit()`（由 `Implements` 提供）主动触发优雅退出。
 
 ### 3.3 日志
 

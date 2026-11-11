@@ -36,7 +36,7 @@ func (s *worker) Start(ctx context.Context) error {
 Start-phase behavior:
 
 - All components start concurrently; `weaver.Run` proceeds to the main logic once every `Start` has been launched (long-running `Start`s don't block startup)
-- A synchronous fast failure in `Start` aborts startup and returns the error; async failures and panics trigger overall shutdown
+- Any error returned or panic raised in `Start` aborts the application: it is logged, triggers overall shutdown, and is reported as the return value of `Run` (the first error wins), independent of goroutine scheduling
 - Long-running services should block inside `Start` (or use `weaver.Listener[H]` for automatic hosting, see [Listener](/en/guide/listener))
 
 ## Shutdown
@@ -81,4 +81,4 @@ weaver.Run / weaver.RunComponent
  └─ call Shutdown on all components on exit
 ```
 
-`weaver.RunComponent(ctx, (*app)(nil))` is a shorthand for `weaver.Run` with an identical startup flow — the main logic is fixed to "wait for the exit signal" (graceful shutdown on `SIGINT`/`SIGQUIT`/`SIGTERM` or a component calling `Exit()`, returning `nil`). The second parameter exists only for type inference.
+`weaver.RunComponent(ctx, (*app)(nil))` is a shorthand for `weaver.Run` with an identical startup flow — the main logic is fixed to "wait for the exit signal" (graceful shutdown on `SIGINT`/`SIGQUIT`/`SIGTERM` or a component calling `Exit()`, returning `nil`; on startup failure the error is returned instead). The second parameter exists only for type inference.

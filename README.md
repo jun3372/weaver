@@ -103,17 +103,19 @@ func main() {
         return nil
     })
     if err != nil {
-        panic(err)
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
     }
 }
 ```
 
-如果没有额外主逻辑、只需跑组件等退出信号，可用 `weaver.RunComponent` 一行简写（第二个参数仅用于类型推断，传 `(*app)(nil)` 即可；收到退出信号或组件调用 `Exit()` 后优雅关闭）：
+如果没有额外主逻辑、只需跑组件等退出信号，可用 `weaver.RunComponent` 一行简写（第二个参数仅用于类型推断，传 `(*app)(nil)` 即可；收到退出信号或组件调用 `Exit()` 后优雅关闭并返回 `nil`，Ctrl-C 属正常关闭路径，不会以错误退出）：
 
 ```go
 func main() {
     if err := weaver.RunComponent(context.Background(), (*app)(nil)); err != nil {
-        panic(err)
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
     }
 }
 ```
@@ -178,7 +180,7 @@ type app struct {
 | 钩子 | 语义 |
 |---|---|
 | `Init(ctx) error` | 装配完成后同步调用，返回错误将中止启动 |
-| `Start(ctx) error` | 并发启动，**支持长驻阻塞**（如 `Serve`）；同步快速失败会中止应用，其余失败或 panic 经 ctx 通知 |
+| `Start(ctx) error` | 并发启动，**支持长驻阻塞**（如 `Serve`）；返回错误或 panic 都会中止应用，并作为 `Run` 的返回值上报（首个错误胜出），不受 goroutine 调度时序影响 |
 | `Shutdown(ctx) error` | 全部 `Start` 退出后依次调用，用于释放资源 |
 
 进程收到 `SIGINT` / `SIGTERM` / `SIGQUIT` 后：通知所有 `Start` 返回 → 关闭服务组件连接 → 限时等待处理中的请求/连接完成 → 执行组件 `Shutdown`。

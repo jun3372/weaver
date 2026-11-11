@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/jun3372/weaver"
@@ -33,7 +35,8 @@ func (app *app) Shutdown(ctx context.Context) error {
 
 func main() {
 	if err := run(); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

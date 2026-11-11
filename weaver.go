@@ -113,10 +113,12 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 	// 启动组件。
 	//
-	// 错误契约：start 等待全部组件 Start 启动后即返回,不等待长驻 Start;
-	// Start 同步快速失败时立刻中止 Run 并返回该错误,其余失败或 panic
-	// 会调用 cancel() 使 ctx 结束并记录 ERROR 日志;app 必须监听 ctx
-	// 否则进程会带着失败的组件继续运行。
+	// 错误契约：start 只等待全部启动动作发起即返回,不等待长驻 Start,
+	// 其返回值仅覆盖同步即可见的装配类失败(Listeners 扫描、Start/Listener
+	// 冲突);Start/serve 返回错误或 panic 的完整上报链路为:错误写入 widget
+	// 启动错误并 cancel ctx → app 退出 → shutdown(先 startWG.Wait,保证
+	// 错误必然已写入)→ Run 优先返回启动错误。启动期错误不再依赖
+	// goroutine 调度时序,也无需 app 主动监听 ctx 才能暴露。
 	if err := widget.start(widget.ctx); err != nil {
 		widget.shutdown(context.Background())
 		return err
@@ -130,21 +132,36 @@ func Run[T any, P PointerToMain[T]](ctx context.Context, app func(context.Contex
 
 	cancel()
 	widget.shutdown(context.Background())
+
+	// 启动期错误优先于 app 的返回值:任一 Start/serve 失败会 cancel ctx,
+	// app(如 RunComponent)返回的多是归因于该取消的错误,此时应返回
+	// 真正的启动失败原因。无启动错误时原样返回 app 的结果。
+	if startErr := widget.startupError(); startErr != nil {
+		return startErr
+	}
 	return err
 }
 
 // RunComponent 启动全部组件后不执行额外主逻辑,阻塞等待退出信号
 // (SIGINT/SIGQUIT/SIGTERM)或组件调用 Exit(),随后优雅关闭并返回 nil。
+// Ctrl-C 等主动退出与 Exit() 属于正常关闭路径,context.Canceled /
+// context.DeadlineExceeded 亦归一化为 nil;真正的错误(如启动失败)
+// 原样返回,调用方只需区分"是否出错",无需识别退出原因。
 // app 仅用于类型推断,传 (*T)(nil) 即可:
 //
 //	if err := weaver.RunComponent(ctx, (*app)(nil)); err != nil {
-//		panic(err)
+//		fmt.Fprintln(os.Stderr, err)
+//		os.Exit(1)
 //	}
 func RunComponent[T any, P PointerToMain[T]](ctx context.Context, app *T) error {
-	return Run[T, P](ctx, func(ctx context.Context, _ *T) error {
+	err := Run[T, P](ctx, func(ctx context.Context, _ *T) error {
 		<-ctx.Done()
 		return ctx.Err()
 	})
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+	return err
 }
 
 type WithConfig[T any] struct {

@@ -5,8 +5,10 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
+	"os"
 
 	"github.com/pkg/errors"
 
@@ -90,6 +92,7 @@ func main() {
 		<-ctx.Done()
 		return nil
 	}); err != nil {
-		panic(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
