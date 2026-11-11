@@ -690,10 +690,14 @@ func (w *widget) reloadConfig() {
 // Start/Listener 允许长驻阻塞(如监听服务),因此 start 只等待全部启动动作
 // 都已发起即返回,不等待任何长驻 Start——否则 Run 永远进不了主逻辑。
 //
-// 错误上报契约:任一 Start/serve 返回错误或 panic 时,错误写入 startErr
-// (首个错误胜出)并 cancel 应用 ctx;调用方在 cancel 之后、shutdown 完成
-// 之前经 startupError 读取,保证启动期错误必然反映在 Run 的返回值上,
-// 不受 goroutine 调度时序影响。start 自身的返回值仅覆盖同步即可见的
+// 错误上报契约:任一 Start/serve 在**关闭流程开始前**返回错误或 panic 时,
+// 错误写入 startErr(首个错误胜出)并 cancel 应用 ctx;调用方在 cancel 之后、
+// shutdown 完成之前经 startupError 读取,保证启动期错误必然反映在 Run 的
+// 返回值上,不受 goroutine 调度时序影响。
+//
+// ctx 已取消后才返回的错误(包括长驻 Start 常见的
+// `<-ctx.Done(); return ctx.Err()`)属于关闭的后果,不写入 startErr,
+// 否则正常退出会被改写成启动失败;其中非取消类错误仍记日志便于诊断。start 自身的返回值仅覆盖同步即可见的
 // 装配类失败(Listeners 扫描、Start/Listener 冲突),供测试断言。
 func (w *widget) start(ctx context.Context) error {
 	w.mu.Lock()
@@ -752,12 +756,29 @@ func (w *widget) start(ctx context.Context) error {
 					if e := recover(); e != nil {
 						err := fmt.Errorf("component panic: %v", e)
 						w.log.Error("Component startup panicked", "err", err)
+						// 与返回错误同口径:关闭流程已开始时,panic 属于退出期间
+						// 的异常,不应把正常退出改写成启动失败。
+						if ctx.Err() != nil {
+							return
+						}
 						w.recordStartErr(err)
 						w.cancel()
 					}
 				}()
 
 				if err := fn(ctx); err != nil {
+					// ctx 已取消说明应用已进入关闭流程(信号 / Exit() / 其它组件
+					// 先失败),此时的返回值是取消的后果而非启动失败。记录它会
+					// 把正常退出覆盖成错误(如长驻 Start 常见写法
+					// `<-ctx.Done(); return ctx.Err()` 会让 Run 返回
+					// context canceled),因此不写入 startErr。
+					// 取消类错误即正常退出路径,静默;其它错误仍记日志便于诊断。
+					if ctx.Err() != nil {
+						if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+							w.log.Error("Component exited with error during shutdown", "err", err)
+						}
+						return
+					}
 					w.log.Error("Component startup failed", "err", err)
 					w.recordStartErr(err)
 					w.cancel()

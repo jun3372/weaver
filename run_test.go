@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jun3372/weaver/internal/reflection"
 	"github.com/jun3372/weaver/runtime/codegen"
 )
 
@@ -113,4 +114,73 @@ func TestRunComponentReturnsStartErrorNotCanceled(t *testing.T) {
 	if errors.Is(err, context.Canceled) {
 		t.Fatal("启动错误不得被归一化为 context.Canceled")
 	}
+}
+
+// --- 关闭期退出返回值不得被误记为启动错误 ---
+
+type gracefulIntf interface{ Ping() string }
+
+// gracefulComp 采用长驻 Start 最常见的写法:阻塞到 ctx 结束,
+// 随后返回 ctx.Err()。
+type gracefulComp struct{ Implements[gracefulIntf] }
+
+func (c *gracefulComp) Start(ctx context.Context) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (c *gracefulComp) Ping() string { return "pong" }
+
+// 回归:长驻 Start 在正常退出时返回 ctx.Err() 曾被当作启动失败,
+// 导致 Run 把 app 返回的 nil 覆盖成 context canceled、并打印
+// "Component startup failed" 的 ERROR 日志。
+func TestStartupErrorIgnoresShutdownExitError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	w := newWidget(ctx, cancel, nil, []*codegen.Registration{{
+		Name:      "testapp/graceful",
+		Interface: reflection.Type[gracefulIntf](),
+		Impl:      reflect.TypeFor[gracefulComp](),
+	}}, "WEAVER")
+
+	if _, err := w.getImpl(reflect.TypeFor[gracefulComp]()); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	if err := w.start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	cancel() // 模拟 Ctrl-C / Exit() / 主逻辑返回
+	w.shutdown(context.Background())
+
+	if err := w.startupError(); err != nil {
+		t.Fatalf("正常退出不应产生启动错误, got %v", err)
+	}
+}
+
+// 关闭期过滤不得把真实启动失败一起关掉:Start 在 ctx 取消前返回的错误
+// 必须照常进入 startupError(修复后仍由 Run 可靠返回)。
+func TestStartupErrorStillRecordsRealStartFailure(t *testing.T) {
+	wantErr := errors.New("real-start-failure")
+	setRunMainErr(wantErr)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	w := newWidget(ctx, cancel, nil, codegen.Registered(), "WEAVER")
+	if _, err := w.getImpl(reflect.TypeFor[runMainComp]()); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	if err := w.start(ctx); err != nil && !errors.Is(err, wantErr) {
+		t.Fatalf("start 返回值异常: %v", err)
+	}
+
+	// 与 Run 的时序一致:错误由失败组件自己 cancel ctx,等它发生后
+	// shutdown 再读,才能断言错误确实被记录(而非读到尚未写入的 nil)。
+	awaitCancel(t, ctx, "Main 组件 Start 返回错误")
+	cancel()
+	w.shutdown(context.Background())
+
+	if err := w.startupError(); !errors.Is(err, wantErr) {
+		t.Fatalf("真实启动失败必须被记录, got %v", err)
+	}
+
+	setRunMainErr(nil) // 恢复包级状态,避免影响其它用例
 }
