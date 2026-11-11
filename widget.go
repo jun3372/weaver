@@ -231,6 +231,51 @@ func isConfigManagedType(name string) bool {
 	return strings.HasPrefix(name, "WithConfig[")
 }
 
+// warnUnrecognizedFields 装配期一次性诊断:框架靠反射类型名前缀
+// ("Listener[" / "WithConfig[")识别服务字段与配置托管字段,类型名拿不到泛型实参
+// 是语言限制,字符串识别是有意取舍;但自定义命名类型包装(type My weaver.Listener[H])
+// 或外部同名类型(如 net.Listener)会被静默跳过 —— 组件看起来"没有服务"、
+// "配置不生效"却没有任何线索。这里对名字疑似但前缀不匹配的字段输出 Warn。
+//
+// 注意:纯类型别名(type A = weaver.Listener[H])的反射名与原类型完全一致,
+// 识别与功能均不受影响,不会触发本诊断;误报方向已由测试锁定。
+// 同一组件同类字段合并为一条告警;由调用方(w.WithConfig)保证每组件装配期只跑一遍。
+// 常见组件原语(Ref[...] / Implements[...])前缀优先排除,避免接口名恰好含
+// "Listener"/"WithConfig" 字样时误报。
+func warnUnrecognizedFields(log *slog.Logger, t reflect.Type) {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return
+	}
+
+	var listenerFields, configFields []string
+	for f := range t.Fields() {
+		name := f.Type.Name()
+		switch {
+		case strings.HasPrefix(name, "Listener["),
+			strings.HasPrefix(name, "WithConfig["),
+			strings.HasPrefix(name, "Ref["),
+			strings.HasPrefix(name, "Implements["):
+			continue // 框架可识别或属于其它组件原语
+		case strings.Contains(name, "Listener"):
+			listenerFields = append(listenerFields, f.Name)
+		case strings.Contains(name, "WithConfig"):
+			configFields = append(configFields, f.Name)
+		}
+	}
+
+	if len(listenerFields) > 0 {
+		log.Warn("字段类型疑似 weaver.Listener 的命名包装或外部同名类型,未被框架识别为服务字段,该字段不会托管任何服务;请直接内嵌 weaver.Listener[H],不要用自定义命名类型包装",
+			"component", t, "fields", strings.Join(listenerFields, ", "))
+	}
+	if len(configFields) > 0 {
+		log.Warn("字段类型疑似 weaver.WithConfig 的命名包装或外部同名类型,未被框架识别为配置托管字段,该字段的配置不会注入;请直接内嵌 weaver.WithConfig[T],不要用自定义命名类型包装",
+			"component", t, "fields", strings.Join(configFields, ", "))
+	}
+}
+
 // fieldConfTag 读取字段的配置依赖标签(conf/weaver/config)。
 func fieldConfTag(f reflect.StructField) string {
 	for _, tag := range config.Tags() {
@@ -495,6 +540,11 @@ func (w *widget) WithConfig(v reflect.Value, impl any, log *slog.Logger) error {
 
 	s := v.Elem()
 	t := s.Type()
+
+	// 装配期一次性诊断:疑似 Listener/WithConfig 但未被识别的字段(命名类型包装、
+	// 外部同名类型)输出告警,避免静默失效。每个组件仅在装配时走到这里一次。
+	warnUnrecognizedFields(log, t)
+
 	seen := map[string]bool{}
 
 	for i := 0; i < t.NumField(); i++ {
